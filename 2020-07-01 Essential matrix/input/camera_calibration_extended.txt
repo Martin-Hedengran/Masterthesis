@@ -1,0 +1,113 @@
+Time of calibration: 
+2020-07-01 08:20:47
+
+Calibration matrix: 
+[704.48172143   0.         637.4243092 ]
+[  0.         704.01349597 375.7176407 ]
+[0. 0. 1.]
+
+Distortion parameters (k1, k2, p1, p2, k3):
+[[ 8.93382520e-02 -1.57262105e-01 -9.82974653e-05  5.65668273e-04
+   7.19784192e-02]]
+
+Summary statistics:
+Image                    Coverage    Avg distor bef   Avg distor aft
+my_photo-6.jpg            98%        0.58             0.11
+my_photo-5.jpg            96%        0.69             0.12
+my_photo-3.jpg           100%        0.65             0.14
+my_photo-1.jpg           100%        0.64             0.14
+my_photo-7.jpg           100%        0.7              0.15
+my_photo-2.jpg            92%        0.52             0.11
+my_photo-4.jpg           100%        0.64             0.13
+
+Average horizontal distortion before: 0.43  pixels from ideal line
+Average vertical distortion before:   0.41  pixels from ideal line
+Average horizontal distortion after:  0.09  pixels from ideal line
+Average vertical distortion after:    0.09  pixels from ideal line
+Images with a coverage lower than 25% are excluded from the calibration
+
+Extended statistics:
+	my_photo-6.jpg
+	Percentage of image covered with points: 98%
+		Before undistorting:
+			Horizontal points : 233
+			Average horizontal distortion: 0.37
+			Vertical points : 232
+			Average vertical distortion: 0.41
+		After undistorting:
+			Horizontal points : 158
+			Average horizontal distortion: 0.07
+			Vertical points : 158
+			Average vertical distortion: 0.08
+	my_photo-5.jpg
+	Percentage of image covered with points: 96%
+		Before undistorting:
+			Horizontal points : 536
+			Average horizontal distortion: 0.47
+			Vertical points : 536
+			Average vertical distortion: 0.44
+		After undistorting:
+			Horizontal points : 349
+			Average horizontal distortion: 0.08
+			Vertical points : 354
+			Average vertical distortion: 0.09
+	my_photo-3.jpg
+	Percentage of image covered with points: 100%
+		Before undistorting:
+			Horizontal points : 570
+			Average horizontal distortion: 0.44
+			Vertical points : 570
+			Average vertical distortion: 0.43
+		After undistorting:
+			Horizontal points : 381
+			Average horizontal distortion: 0.09
+			Vertical points : 381
+			Average vertical distortion: 0.09
+	my_photo-1.jpg
+	Percentage of image covered with points: 100%
+		Before undistorting:
+			Horizontal points : 362
+			Average horizontal distortion: 0.44
+			Vertical points : 362
+			Average vertical distortion: 0.39
+		After undistorting:
+			Horizontal points : 263
+			Average horizontal distortion: 0.1
+			Vertical points : 264
+			Average vertical distortion: 0.08
+	my_photo-7.jpg
+	Percentage of image covered with points: 100%
+		Before undistorting:
+			Horizontal points : 654
+			Average horizontal distortion: 0.48
+			Vertical points : 654
+			Average vertical distortion: 0.43
+		After undistorting:
+			Horizontal points : 491
+			Average horizontal distortion: 0.1
+			Vertical points : 491
+			Average vertical distortion: 0.1
+	my_photo-2.jpg
+	Percentage of image covered with points: 92%
+		Before undistorting:
+			Horizontal points : 415
+			Average horizontal distortion: 0.34
+			Vertical points : 414
+			Average vertical distortion: 0.37
+		After undistorting:
+			Horizontal points : 246
+			Average horizontal distortion: 0.07
+			Vertical points : 246
+			Average vertical distortion: 0.08
+	my_photo-4.jpg
+	Percentage of image covered with points: 100%
+		Before undistorting:
+			Horizontal points : 536
+			Average horizontal distortion: 0.44
+			Vertical points : 536
+			Average vertical distortion: 0.4
+		After undistorting:
+			Horizontal points : 345
+			Average horizontal distortion: 0.09
+			Vertical points : 345
+			Average vertical distortion: 0.08

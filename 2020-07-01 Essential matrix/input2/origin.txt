@@ -1,0 +1,3 @@
+The first three images have the same orientation.
+The last three images have the same orientation.
+Between the two sets of images, there is a rotation of approx 45 degrees.
