@@ -2,6 +2,7 @@
 import cv2
 import numpy as np
 import math
+import matplotlib.pyplot as plt
 
 # Code borrowed from the following sources
 # https://docs.opencv.org/master/d1/d89/tutorial_py_orb.html
@@ -58,99 +59,99 @@ def rotationMatrixToEulerAngles(R) :
 
     return np.array([x, y, z])
 
-def generate_path(rotations, translations):
+def generate_path(translations):
     path = []
     current_point = np.array([0, 0, 0])
 
-    for R, t in zip(rotations, translations):
+    for t in zip(translations):
         path.append(current_point)
         # don't care about rotation of a single point
-        current_point = current_point + t.reshape((3,)
+        current_point = current_point + np.reshape(t, 3)
 
     return np.array(path)
+    #return np.array(path)
 
 
 
 # Initiate ORB detector
 orb = cv2.ORB_create()
+rotation = []
+translation = []
+for i in range(50):
+    # Load images
+    n = "input2/DSC00" + str(203+i) + ".jpg"
+    k = "input2/DSC00" + str(203+i+1) + ".jpg"
+    img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)
+    img2 = cv2.imread(k, cv2.IMREAD_GRAYSCALE)
 
-# Load images
-img1 = cv2.imread("input2/rotation4.jpg", cv2.IMREAD_GRAYSCALE)
-img2 = cv2.imread("input2/rotation5.jpg", cv2.IMREAD_GRAYSCALE)
+    # find the keypoints and descriptors with ORB
+    kp1, des1 = orb.detectAndCompute(img1, None)
+    kp2, des2 = orb.detectAndCompute(img2, None)
 
-# find the keypoints and descriptors with ORB
-kp1, des1 = orb.detectAndCompute(img1, None)
-kp2, des2 = orb.detectAndCompute(img2, None)
+    # create BFMatcher object
+    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-# create BFMatcher object
-bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    # Match descriptors.
+    matches = bf.match(des1,des2)
 
-# Match descriptors.
-matches = bf.match(des1,des2)
+    # Sort them in the order of their distance.
+    matches = sorted(matches, key = lambda x:x.distance)
 
-# Sort them in the order of their distance.
-matches = sorted(matches, key = lambda x:x.distance)
+    # Draw first 10 matches.
+    img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-# Draw first 10 matches.
-img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    pts1 = []
+    pts2 = []
+    # ratio test as per Lowe's paper
+    for m in matches:
+        pts2.append(kp2[m.trainIdx].pt)
+        pts1.append(kp1[m.queryIdx].pt)
 
-pts1 = []
-pts2 = []
-# ratio test as per Lowe's paper
-for m in matches:
-    pts2.append(kp2[m.trainIdx].pt)
-    pts1.append(kp1[m.queryIdx].pt)
+    pts1 = np.int32(pts1)
+    pts2 = np.int32(pts2)
+    F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
 
-pts1 = np.int32(pts1)
-pts2 = np.int32(pts2)
-F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
-
-# We select only inlier points
-pts1 = pts1[mask.ravel()==1]
-pts2 = pts2[mask.ravel()==1]
-
-
-cameraMatrix = np.array([[1108.76542565,   0.,         1280/2 ],
-                        [  0.,         1108.76542565, 720/2 ],
-                        [0., 0., 1.]])
-essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix)
-#print(essential_matrix)
+    # We select only inlier points
+    pts1 = pts1[mask.ravel()==1]
+    pts2 = pts2[mask.ravel()==1]
 
 
-retval, R, t, mask = cv2.recoverPose(essential_matrix, pts1, pts2, cameraMatrix)
+    cameraMatrix = np.array([[277.191356,   0.,         320.5 ],
+                            [  0.,         277.191356, 240.5 ],
+                            [0., 0., 1.]])
+    essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix)
+    #print(essential_matrix)
+    i+=1
 
-print(t)
-print(rotationMatrixToEulerAngles(R))
+    retval, R, t, mask = cv2.recoverPose(essential_matrix, pts1, pts2, cameraMatrix)
+    x, y ,z = R
+    rotation.append(R) 
+    translation.append(t)
+
+path = generate_path(translation)
+print(path)
+print(translation)
+#print(rotationMatrixToEulerAngles(R))
+
+plt.plot(path[:,0], path[:,1])
+plt.show()
+
+# # Find epilines corresponding to points in right image (second image) and
+# # drawing its lines on left image
+# lines1 = cv2.computeCorrespondEpilines(pts2.reshape(-1,1,2), 2,F)
+# lines1 = lines1.reshape(-1,3)
+# img5,img6 = drawlines(img1,img2,lines1,pts1,pts2)
+# # Find epilines corresponding to points in left image (first image) and
+# # drawing its lines on right image
+# lines2 = cv2.computeCorrespondEpilines(pts1.reshape(-1,1,2), 1,F)
+# lines2 = lines2.reshape(-1,3)
+# img3,img4 = drawlines(img2,img1,lines2,pts2,pts1)
 
 
-
-
-# Find epilines corresponding to points in right image (second image) and
-# drawing its lines on left image
-lines1 = cv2.computeCorrespondEpilines(pts2.reshape(-1,1,2), 2,F)
-lines1 = lines1.reshape(-1,3)
-img5,img6 = drawlines(img1,img2,lines1,pts1,pts2)
-# Find epilines corresponding to points in left image (first image) and
-# drawing its lines on right image
-lines2 = cv2.computeCorrespondEpilines(pts1.reshape(-1,1,2), 1,F)
-lines2 = lines2.reshape(-1,3)
-img3,img4 = drawlines(img2,img1,lines2,pts2,pts1)
-
-
-
-
-
-
-
-
-
-
-
-
-#cv2.imshow("img1", img1)
-#cv2.imshow("img2", img2)
-cv2.imshow("img3", img3)
-#cv2.imshow("img4", img4)
-cv2.imshow("img5", img5)
-cv2.waitKey(100000)
+# #cv2.imshow("img1", img1)
+# #cv2.imshow("img2", img2)
+# cv2.imshow("img3", img3)
+# #cv2.imshow("img4", img4)
+# cv2.imshow("img5", img5)
+# cv2.waitKey(100000)
 
