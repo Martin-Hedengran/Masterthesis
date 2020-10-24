@@ -58,14 +58,25 @@ def rotationMatrixToEulerAngles(R) :
 
     return np.array([x, y, z])
 
+def generate_path(rotations, translations):
+    path = []
+    current_point = np.array([0, 0, 0])
+
+    for R, t in zip(rotations, translations):
+        path.append(current_point)
+        # don't care about rotation of a single point
+        current_point = current_point + t.reshape((3,)
+
+    return np.array(path)
+
 
 
 # Initiate ORB detector
 orb = cv2.ORB_create()
 
 # Load images
-img1 = cv2.imread("input2/test1.jpg", cv2.IMREAD_GRAYSCALE)
-img2 = cv2.imread("input2/test2.jpg", cv2.IMREAD_GRAYSCALE)
+img1 = cv2.imread("input2/rotation4.jpg", cv2.IMREAD_GRAYSCALE)
+img2 = cv2.imread("input2/rotation5.jpg", cv2.IMREAD_GRAYSCALE)
 
 # find the keypoints and descriptors with ORB
 kp1, des1 = orb.detectAndCompute(img1, None)
@@ -99,8 +110,8 @@ pts1 = pts1[mask.ravel()==1]
 pts2 = pts2[mask.ravel()==1]
 
 
-cameraMatrix = np.array([[704.48172143,   0.,         637.4243092 ],
-                        [  0.,         704.01349597, 375.7176407 ],
+cameraMatrix = np.array([[1108.76542565,   0.,         1280/2 ],
+                        [  0.,         1108.76542565, 720/2 ],
                         [0., 0., 1.]])
 essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix)
 #print(essential_matrix)
