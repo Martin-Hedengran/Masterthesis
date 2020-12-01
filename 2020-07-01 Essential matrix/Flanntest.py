@@ -25,13 +25,35 @@ def rotationMatrixToEulerAngles(R) :
 
     return np.array([x, y, z])
 
+def rescale(img):
+    
+    scale_percent = 20 # percent of original size
+    width = int(img.shape[1] * scale_percent / 100)
+    height = int(img.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    # resize image
+    resized = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
+    return resized
+
+#Gazebo pinhole camera formula: focal_length = image_width / (2*tan(hfov_radian / 2)
+def camera_extrinsics(img):
+    hfov = 1.047 # 60 degrees
+    height, width = img.shape
+    focal_length = width/(2*math.tan(hfov/2))
+    cx = width/2
+    cy = height/2
+    
+    return focal_length, cx, cy
+
 img1 = cv2.imread("input2/DJI_0001.JPG", cv2.IMREAD_GRAYSCALE)
 img2 = cv2.imread("input2/DJI_0002.JPG", cv2.IMREAD_GRAYSCALE)
 counter = 0
+img1 = rescale(img1)
+img2 = rescale(img2)
+focal_lenght, cx, cy = camera_extrinsics(img1)
 
-
-K = np.array([[3666.666504,   0.,         2736.0000002 ],
-                [  0.,         3666.666504, 1824.000000 ],
+K = np.array([[focal_lenght,   0.,         cx ],
+                [  0.,         focal_lenght, cy ],
                 [0., 0., 1.]])
 
 
@@ -59,7 +81,7 @@ good = []
 for m,n in matches:
     if m.distance < 0.7*n.distance:
         good.append(m)
-
+print(len(good))
 if len(good)>MIN_MATCH_COUNT:
     p1 = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
     p2 = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
@@ -108,3 +130,43 @@ print(t)
 #img3 = ResizeWithAspectRatio(img3, width=1280)
 #cv2.imshow("img3", img3)
 #cv2.waitKey(100000)
+
+#######################
+#4----triangulation---#
+#######################
+
+#calculate projection matrix for both camera
+M_r = np.hstack((R, t))
+M_l = np.hstack((np.eye(3, 3), np.zeros((3, 1))))
+
+P_l = np.dot(K,  M_l)
+P_r = np.dot(K,  M_r)
+
+# undistort points
+p1 = p1[np.asarray(matchesMask)==1,:,:]
+p2 = p2[np.asarray(matchesMask)==1,:,:]
+p1_un = cv2.undistortPoints(p1,K,None)
+p2_un = cv2.undistortPoints(p2,K,None)
+p1_un = np.squeeze(p1_un)
+p2_un = np.squeeze(p2_un)
+
+#triangulate points this requires points in normalized coordinate
+point_4d_hom = cv2.triangulatePoints(P_l, P_r, p1_un.T, p2_un.T)
+point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
+point_3d = point_3d[:3, :].T
+
+#############################
+#5----output 3D pointcloud--#
+#############################
+#TODO: Display 3D points
+fig = plt.figure()
+ax = fig.add_subplot(111, projection='3d')
+ax.set_xlabel('X Label')
+ax.set_ylabel('Y Label')
+ax.set_zlabel('Z Label')
+
+for x, y, z in point_3d:
+    ax.scatter(x, y, z, c="r", marker="o")
+
+plt.show()
+fig.savefig('3-D_' + str(counter) + '.jpg')
