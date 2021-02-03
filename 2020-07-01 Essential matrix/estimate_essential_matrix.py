@@ -61,12 +61,12 @@ def rotationMatrixToEulerAngles(R) :
 
 def generate_path(translations):
     path = []
-    current_point = np.array([0, 0, 0])
+    current_point = np.array([0, 0, 0, 0])
 
     for t in zip(translations):
         path.append(current_point)
         # don't care about rotation of a single point
-        current_point = current_point + np.reshape(t, 3)
+        current_point = current_point + np.reshape(t, 4)
 
     return np.array(path)
     #return np.array(path)
@@ -77,6 +77,8 @@ def generate_path(translations):
 orb = cv2.ORB_create()
 rotation = []
 translation = []
+position = []
+currPos = np.array([[0],[0],[0],[1]])
 for i in range(50):
     # Load images
     n = "input2/DSC00" + str(203+i) + ".jpg"
@@ -128,12 +130,21 @@ for i in range(50):
     rotation.append(R) 
     translation.append(t)
 
-path = generate_path(translation)
+    H = np.concatenate((R,t), axis=1)
+    H = np.concatenate((H,np.array([[0,0,0,1]])), axis=0)
+    print("R: "+ str(R) +"\t t: " + str(t) +"\t H: "+ str(H))
+    print(currPos)
+    position.append(np.matmul(H,currPos))
+    currPos = np.matmul(H,currPos)
+    print("done with img "+str(i))
+
+path = generate_path(position)
 print(path)
 print(translation)
+print(rotation)
 #print(rotationMatrixToEulerAngles(R))
 
-plt.plot(path[:,0], path[:,1])
+plt.plot(path[:,1], path[:,0])
 plt.show()
 
 # # Find epilines corresponding to points in right image (second image) and
