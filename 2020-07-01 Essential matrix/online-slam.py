@@ -667,13 +667,13 @@ distance           = 20.0     # distance by which robot (intends to) move each i
 
 # Uncomment the following three lines to run the full slam routine.
 
-#data = make_data(N, num_landmarks, world_size, measurement_range, motion_noise, measurement_noise, distance)
-#result = slam(data, N, num_landmarks, motion_noise, measurement_noise)
-#print_result(N, num_landmarks, result)
+data = make_data(N, num_landmarks, world_size, measurement_range, motion_noise, measurement_noise, distance)
+result = slam(data, N, num_landmarks, motion_noise, measurement_noise)
+print_result(N, num_landmarks, result)
 
 # Uncomment the following three lines to run the online_slam routine.
 
-data = make_data(N, num_landmarks, world_size, measurement_range, motion_noise, measurement_noise, distance)
+#data = make_data(N, num_landmarks, world_size, measurement_range, motion_noise, measurement_noise, distance)
 result = online_slam(data, N, num_landmarks, motion_noise, measurement_noise)
 print_result(1, num_landmarks, result[0])
 
