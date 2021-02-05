@@ -72,10 +72,21 @@ def generate_path(translations):
     return np.array(path)
     #return np.array(path)
 
+def rescale(img):
+    
+    scale_percent = 20 # percent of original size
+    width = int(img.shape[1] * scale_percent / 100)
+    height = int(img.shape[0] * scale_percent / 100)
+    dim = (width, height)
+    # resize image
+    resized = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
+    return resized
+
 
 
 # Initiate ORB detector
-orb = cv2.ORB_create()
+#orb = cv2.ORB_create()
+sift = cv2.SIFT_create()
 rotation = []
 translation = []
 position = []
@@ -87,42 +98,74 @@ for i in range(50):
     img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)
     img2 = cv2.imread(k, cv2.IMREAD_GRAYSCALE)
 
-    # find the keypoints and descriptors with ORB
-    kp1, des1 = orb.detectAndCompute(img1, None)
-    kp2, des2 = orb.detectAndCompute(img2, None)
 
-    # create BFMatcher object
-    bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
+    # -------------------- ORB TEST ---------------------------------- #
+    # # find the keypoints and descriptors with ORB
+    # kp1, des1 = orb.detectAndCompute(img1, None)
+    # kp2, des2 = orb.detectAndCompute(img2, None)
 
-    # Match descriptors.
-    matches = bf.match(des1,des2)
+    # # create BFMatcher object
+    # bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck=True)
 
-    # Sort them in the order of their distance.
-    matches = sorted(matches, key = lambda x:x.distance)
+    # # Match descriptors.
+    # matches = bf.match(des1,des2)
 
-    # Draw first 10 matches.
-    img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+    # # Sort them in the order of their distance.
+    # matches = sorted(matches, key = lambda x:x.distance)
 
-    pts1 = []
-    pts2 = []
-    # ratio test as per Lowe's paper
-    for m in matches:
-        pts2.append(kp2[m.trainIdx].pt)
-        pts1.append(kp1[m.queryIdx].pt)
+    # # Draw first 10 matches.
+    # img3 = cv2.drawMatches(img1,kp1,img2,kp2,matches[:10],None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
 
-    pts1 = np.int32(pts1)
-    pts2 = np.int32(pts2)
-    F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
+    # pts1 = []
+    # pts2 = []
+    # # ratio test as per Lowe's paper
+    # for m in matches:
+    #     pts2.append(kp2[m.trainIdx].pt)
+    #     pts1.append(kp1[m.queryIdx].pt)
 
-    # We select only inlier points
-    pts1 = pts1[mask.ravel()==1]
-    pts2 = pts2[mask.ravel()==1]
+    # pts1 = np.int32(pts1)
+    # pts2 = np.int32(pts2)
+    # F, mask = cv2.findFundamentalMat(pts1,pts2,cv2.FM_LMEDS)
 
+    # # We select only inlier points
+    # pts1 = pts1[mask.ravel()==1]
+    # pts2 = pts2[mask.ravel()==1]
+
+    # -------------------- SIFT TEST --------------------------------- #
+
+    MIN_MATCH_COUNT = 10
+
+    img1 = rescale(img1)
+    img2 = rescale(img2)
+
+    kp1, des1 = sift.detectAndCompute(img1,None)
+    kp2, des2 = sift.detectAndCompute(img2,None)
+
+    #use flann to perform feature matching
+    FLANN_INDEX_KDTREE = 0
+    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    search_params = dict(checks = 50)
+
+    flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    matches = flann.knnMatch(des1,des2,k=2)
+
+    # store all the good matches as per Lowe's ratio test.
+    good = []
+    for m,n in matches:
+        if m.distance < 0.7*n.distance:
+            good.append(m)
+    print(len(good))
+    if len(good)>MIN_MATCH_COUNT:
+        pts1 = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+        pts2 = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+
+    # ---------------------------------------------------------------- #
 
     cameraMatrix = np.array([[277.191356,   0.,         320.5 ],
                             [  0.,         277.191356, 240.5 ],
                             [0., 0., 1.]])
-    essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix)
+    essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix, cv2.RANSAC, 0.999, 1.0)
     #print(essential_matrix)
     i+=1
 
