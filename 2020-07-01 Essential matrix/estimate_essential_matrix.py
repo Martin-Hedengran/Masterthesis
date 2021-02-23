@@ -82,7 +82,14 @@ def rescale(img):
     resized = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
     return resized
 
-
+def camera_extrinsics(img):
+    hfov = 1.047 # 60 degrees
+    height, width = img.shape
+    focal_length = width/(2*math.tan(hfov/2))
+    cx = width/2
+    cy = height/2
+    
+    return focal_length, cx, cy
 
 # Initiate ORB detector
 #orb = cv2.ORB_create()
@@ -98,6 +105,8 @@ for i in range(50):
     img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)
     img2 = cv2.imread(k, cv2.IMREAD_GRAYSCALE)
 
+    img1 = rescale(img1)
+    img2 = rescale(img2)
 
     # -------------------- ORB TEST ---------------------------------- #
     # # find the keypoints and descriptors with ORB
@@ -135,9 +144,6 @@ for i in range(50):
 
     MIN_MATCH_COUNT = 10
 
-    img1 = rescale(img1)
-    img2 = rescale(img2)
-
     kp1, des1 = sift.detectAndCompute(img1,None)
     kp2, des2 = sift.detectAndCompute(img2,None)
 
@@ -162,9 +168,12 @@ for i in range(50):
 
     # ---------------------------------------------------------------- #
 
-    cameraMatrix = np.array([[277.191356,   0.,         320.5 ],
-                            [  0.,         277.191356, 240.5 ],
-                            [0., 0., 1.]])
+    focal_lenght, cx, cy = camera_extrinsics(img1)
+
+    cameraMatrix = np.array([[focal_lenght,   0.,         cx ],
+                [  0.,         focal_lenght, cy ],
+                [0., 0., 1.]])
+
     essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix, cv2.RANSAC, 0.999, 1.0)
     #print(essential_matrix)
     i+=1
