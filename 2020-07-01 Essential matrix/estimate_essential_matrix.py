@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+from GPSPhoto import gpsphoto
 from mpl_toolkits.mplot3d import Axes3D
 
 # Code borrowed from the following sources
@@ -91,14 +92,26 @@ def camera_extrinsics(img):
     
     return focal_length, cx, cy
 
-# Initiate ORB detector
+# Initiate detector
 #orb = cv2.ORB_create()
 sift = cv2.SIFT_create()
+
 rotation = []
 translation = []
 position = []
+posLat = []
+posLon = []
+altitude = []
+
+GPSx = []
+GPSy = []
+
+GPSData = gpsphoto.getGPSData("input2/DSC00" + str(203) + ".jpg")
+
+#currPos = np.array([[111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000],[110.574*GPSData['Latitude']*1000],[GPSData['Altitude']],[1]])
 currPos = np.array([[0],[0],[0],[1]])
-for i in range(50):
+
+for i in range(54):
     # Load images
     n = "input2/DSC00" + str(203+i) + ".jpg"
     k = "input2/DSC00" + str(203+i+1) + ".jpg"
@@ -191,15 +204,36 @@ for i in range(50):
     currPos = np.matmul(H,currPos)
     print("done with img "+str(i))
 
+    GPSData = gpsphoto.getGPSData(k)
+
+    posLat.append(GPSData['Latitude'])
+    posLon.append(GPSData['Longitude'])
+
+    altitude.append(GPSData['Altitude'])
+    print(GPSData)
+
+    GPSy.append(110.574*GPSData['Latitude']*1000)                           # Convert Latitude to meters
+    GPSx.append(111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000) # Convert Longitude to meters
+
+
 path = generate_path(position)
 print(path)
 print(translation)
 print(rotation)
 #print(rotationMatrixToEulerAngles(R))
 
-# plt.plot(path[:,1], path[:,0])
+# plt.plot(posLon, posLat)
 # plt.axis('equal')
-# plt.show()
+
+fig, axs = plt.subplots(2)
+fig.suptitle('Vertically stacked subplots')
+axs[0].plot(GPSx, GPSy)
+axs[1].plot(path[:,1], -path[:,0])
+
+plt.axis('equal')
+
+
+# ----------------------- Camera Estimate ------------------- #
 
 fig = plt.figure()
 ax = fig.gca(projection='3d')
@@ -208,7 +242,7 @@ X = path[:,0]
 Y = path[:,1]
 Z = path[:,2]
 
-scat = ax.scatter(X, Y, Z)
+ax.scatter(X, Y, Z)
 
 # Create cubic bounding box to simulate equal aspect ratio
 max_range = np.array([X.max()-X.min(), Y.max()-Y.min(), Z.max()-Z.min()]).max()
@@ -224,6 +258,33 @@ ax.set_ylabel("y axis")
 ax.set_zlabel("z axis")
 
 plt.grid()
+
+# ------------------ GPS DATA ------------------------------------ #
+
+fig2 = plt.figure()
+ax2 = fig2.gca(projection='3d')
+
+X2 = np.array(GPSx)
+Y2 = np.array(GPSy)
+Z2 = np.array(altitude)
+
+ax2.scatter(X2, Y2, Z2)
+
+# Create cubic bounding box to simulate equal aspect ratio
+max_range2 = np.array([X2.max()-X2.min(), Y2.max()-Y2.min(), Z2.max()-Z2.min()]).max()
+Xb2 = 0.5*max_range2*np.mgrid[-1:2:2,-1:2:2,-1:2:2][0].flatten() + 0.5*(X2.max()+X2.min())
+Yb2 = 0.5*max_range2*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y2.max()+Y2.min())
+Zb2 = 0.5*max_range2*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z2.max()+Z2.min())
+# Comment or uncomment following both lines to test the fake bounding box:
+for xb2, yb2, zb2 in zip(Xb2, Yb2, Zb2):
+   ax2.plot([xb2], [yb2], [zb2], 'w')
+
+ax2.set_xlabel("Longitude")
+ax2.set_ylabel("Latitude")
+ax2.set_zlabel("Altitude")
+
+plt.grid()
+
 plt.show()
 
 # # Find epilines corresponding to points in right image (second image) and
