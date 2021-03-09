@@ -8,7 +8,11 @@ from camera_model import camera
 import g2o
 
 MIN_MATCH_COUNT = 10
-
+Window_Size = 2
+matched_points = []
+Rotations = []
+Translations = []
+points_2d = []
 # Calculates rotation matrix to euler angles
 # The result is the same as MATLAB except the order
 # of the euler angles ( x and z are swapped ).
@@ -120,6 +124,8 @@ if len(good)>MIN_MATCH_COUNT:
     p1 = np.float64([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
     p2 = np.float64([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
+matched_points.append(len(p1))
+
 draw_params = dict(matchColor = (0,255,0), # draw matches in green color
                     singlePointColor = None,
                     flags = 2)
@@ -155,6 +161,11 @@ print("Rotation in radians:")
 print(rotationMatrixToEulerAngles(R))
 print("Translation:")
 print(t)
+#initial rot
+Rotations.append(np.identity(3))
+Rotations.append(R)
+Translations.append([0, 0, 0])
+Translations.append(t.T[0])
 # p1_tmp = np.expand_dims(np.squeeze(p1), 0)
 #p1_tmp = np.ones([3, p1.shape[0]])
 #p1_tmp[:2,:] = np.squeeze(p1).T
@@ -205,7 +216,6 @@ for x, y, z in point_3d:
 #plt.show()
 #fig.savefig('3-D_' + str(counter) + '.png')
 
-
 #############################
 #6-----Bundleadjustment-----#
 #############################
@@ -214,8 +224,8 @@ for x, y, z in point_3d:
 #Initiate class
 bundleAdjust = BundleAdjustment()
 #@param(focal length, principal point, baseline)
-bundleAdjust.camera(cam, 0)
-
+bundleAdjust.camera(cam, 0) 
+'''
 #Pose 1 set to 0, pose 2 derived from calculated rotation and translation
 #@param (Rotation[3x3], Translation[3,])
 pose_camera_1 = g2o.SE3Quat(np.identity(3), [0, 0, 0])
@@ -223,19 +233,27 @@ pose_camera_2 = g2o.SE3Quat(R, t.T[0])
 #@param (pose id, pose, camera parameters) 
 bundleAdjust.add_pose(1, pose_camera_1)
 bundleAdjust.add_pose(2, pose_camera_2)
+'''
+new_p1 = p1.reshape(p1.shape[0], (p1.shape[1] * p1.shape[2]))
+new_p2 = p2.reshape(p2.shape[0], (p2.shape[1] * p2.shape[2]))
 
-
-#Add 3d points and edges
+#Add poses
+for j in range(Window_Size):
+    #Remove old poses
+    if (len(Rotations) or len(Translations)) > Window_Size:
+        Rotations.pop(0)
+        Translations.pop(0)
+    bundleAdjust.add_pose(j+1, g2o.SE3Quat(Rotations[j], Translations[j]))
+    
 for i in range(len(point_3d)):
     #Add 3d points
     #@param (point id, point[3,])
-    bundleAdjust.add_point(i, point_3d[i-1])
-
+    bundleAdjust.add_point(i+1, point_3d[i])
     #Add edges from first camera
+    bundleAdjust.add_edge(i+1, 1, new_p2[i])
     #@param (point id, pose id, point2d[2,])
-    bundleAdjust.add_edge(i, 1, kp2[good[i-1].trainIdx].pt)
     #Add edges from second camera
-    bundleAdjust.add_edge(i, 2, kp1[good[i-1].queryIdx].pt)
+    bundleAdjust.add_edge(i+1, 2, new_p1[i])
 
 bundleAdjust.optimizer()
 bundle_T = bundleAdjust.get_pose(2).translation()
