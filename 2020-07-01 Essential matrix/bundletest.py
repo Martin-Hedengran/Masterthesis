@@ -225,6 +225,9 @@ for x, y, z in point_3d:
 bundleAdjust = BundleAdjustment()
 #@param(focal length, principal point, baseline)
 bundleAdjust.camera(cam, 0) 
+cam = g2o.CameraParameters(cam.focal_length, np.array([cam.cx, cam.cy], dtype=np.float64), 0)
+z = cam.cam_map(g2o.SE3Quat(Rotations[0], Translations[0]) * point_3d[0])
+print(z)
 '''
 #Pose 1 set to 0, pose 2 derived from calculated rotation and translation
 #@param (Rotation[3x3], Translation[3,])
@@ -244,7 +247,7 @@ for j in range(Window_Size):
         Rotations.pop(0)
         Translations.pop(0)
     bundleAdjust.add_pose(j+1, g2o.SE3Quat(Rotations[j], Translations[j]))
-    
+
 for i in range(len(point_3d)):
     #Add 3d points
     #@param (point id, point[3,])
