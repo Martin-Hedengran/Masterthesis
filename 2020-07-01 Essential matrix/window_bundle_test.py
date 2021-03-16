@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from GPSPhoto import gpsphoto
 from mpl_toolkits.mplot3d import Axes3D
 import bundleadjust_camera_coords
+from scipy.spatial.transform import Rotation as quatrot
 
 # Code borrowed from the following sources
 # https://docs.opencv.org/master/d1/d89/tutorial_py_orb.html
@@ -12,6 +13,46 @@ import bundleadjust_camera_coords
 # https://docs.opencv.org/master/da/de9/tutorial_py_epipolar_geometry.html
 # https://www.learnopencv.com/rotation-matrix-to-euler-angles/
 # https://www.morethantechnical.com/2016/10/17/structure-from-motion-toy-lib-upgrades-to-opencv-3/
+
+def quaternion_rotation_matrix(Q):
+    """
+    Covert a quaternion into a full three-dimensional rotation matrix.
+ 
+    Input
+    :param Q: A 4 element array representing the quaternion (q0,q1,q2,q3) 
+ 
+    Output
+    :return: A 3x3 element matrix representing the full 3D rotation matrix. 
+             This rotation matrix converts a point in the local reference 
+             frame to a point in the global reference frame.
+    """
+    # Extract the values from Q
+    q0 = Q.w()
+    q1 = Q.x()
+    q2 = Q.y()
+    q3 = Q.z()
+    
+    # First row of the rotation matrix
+    r00 = 2 * (q0 * q0 + q1 * q1) - 1
+    r01 = 2 * (q1 * q2 - q0 * q3)
+    r02 = 2 * (q1 * q3 + q0 * q2)
+    
+    # Second row of the rotation matrix
+    r10 = 2 * (q1 * q2 + q0 * q3)
+    r11 = 2 * (q0 * q0 + q2 * q2) - 1
+    r12 = 2 * (q2 * q3 - q0 * q1)
+    
+    # Third row of the rotation matrix
+    r20 = 2 * (q1 * q3 - q0 * q2)
+    r21 = 2 * (q2 * q3 + q0 * q1)
+    r22 = 2 * (q0 * q0 + q3 * q3) - 1
+    
+    # 3x3 rotation matrix
+    rot_matrix = np.array([[r00, r01, r02],
+                           [r10, r11, r12],
+                           [r20, r21, r22]])
+                            
+    return rot_matrix
 
 
 def drawlines(img1,img2,lines,pts1,pts2):
@@ -66,16 +107,16 @@ def generate_path(translations):
     current_point = np.array([0, 0, 0, 0])
 
     for t in zip(translations):
+        current_point = current_point + np.reshape(t, 4)
         path.append(current_point)
         # don't care about rotation of a single point
-        current_point = current_point + np.reshape(t, 4)
 
     return np.array(path)
     #return np.array(path)
 
 def rescale(img):
     
-    scale_percent = 20 # percent of original size
+    scale_percent = 40 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -128,6 +169,10 @@ altitude = []
 triang_points = []
 window_size = 5
 count = 0
+adjusted_R = []
+adjusted_T = []
+bundle_rot = []
+bundle_T = []
 
 GPSx = []
 GPSy = []
@@ -137,7 +182,7 @@ GPSData = gpsphoto.getGPSData("input2/DSC00" + str(203) + ".jpg")
 #currPos = np.array([[111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000],[110.574*GPSData['Latitude']*1000],[GPSData['Altitude']],[1]])
 currPos = np.array([[0],[0],[0],[1]])
 
-for i in range(54):
+for i in range(51):
     # Load images
     n = "input2/DSC00" + str(203+i) + ".jpg"
     k = "input2/DSC00" + str(203+i+1) + ".jpg"
@@ -220,11 +265,16 @@ for i in range(54):
     x, y ,z = R
     rotation.append(R) 
     translation.append(t)
+    bundle_rot.append(R)
+    bundle_T.append(t)
+    if len(bundle_rot) > window_size:
+        bundle_rot.pop(0)
+        bundle_T.pop(0)
 
     H = np.concatenate((R,t), axis=1)
     H = np.concatenate((H,np.array([[0,0,0,1]])), axis=0)
-    print("R: "+ str(R) +"\t t: " + str(t) +"\t H: "+ str(H))
-    print(currPos)
+    #print("R: "+ str(R) +"\t t: " + str(t) +"\t H: "+ str(H))
+    #print(currPos)
     position.append(np.matmul(H,currPos))
     currPos = np.matmul(H,currPos)
     if i == 0:
@@ -236,7 +286,10 @@ for i in range(54):
         triang_points = (triangulation(rotation[i-1], translation[i-1], rotation[i], translation[i], cameraMatrix, pts1, pts2, matchesMask))
         triang_points = np.concatenate((temp, triang_points), axis=0)
     if count == window_size:
-        bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, rotation, translation, 10, 0)
+        temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 100, 0)
+        for l in range(len(temp_T)):
+            adjusted_R.append(quaternion_rotation_matrix(temp_R[l]))
+            adjusted_T.append(temp_T[l])
         count = 0
         triang_points = []
     count+=1
@@ -255,6 +308,21 @@ for i in range(54):
     GPSx.append(111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000) # Convert Longitude to meters
     
 path = generate_path(position)
+adjusted_position = []
+H_list = []
+pos_temp = np.array([[0],[0],[0],[1]])
+for l in range(len(adjusted_R)):
+    adjusted_H = np.concatenate((adjusted_R[l],np.transpose(np.matrix(adjusted_T[l]))), axis=1)
+    adjusted_H = np.concatenate((adjusted_H,np.array([[0,0,0,1]])), axis=0)
+    adjusted_position.append(np.matmul(adjusted_H,pos_temp))
+    pos_temp = np.matmul(adjusted_H,pos_temp)
+#print(len(H_list))
+print(adjusted_H)
+print(H)
+#print(translation)
+adjusted_path = generate_path(adjusted_position)
+#print(adjusted_position)
+#print(adjusted_path)
 #print(path)
 #print(translation)
 #print(rotation)
@@ -263,12 +331,12 @@ path = generate_path(position)
 # plt.plot(posLon, posLat)
 # plt.axis('equal')
 
-fig, axs = plt.subplots(2)
+fig, axs = plt.subplots(3)
 fig.suptitle('Vertically stacked subplots')
 axs[0].plot(GPSx, GPSy)
 axs[1].plot(path[:,1], -path[:,0])
+axs[2].plot(adjusted_path[:,1], -adjusted_path[:,0])
 
-plt.axis('equal')
 
 
 # ----------------------- Camera Estimate ------------------- #
@@ -323,7 +391,35 @@ ax2.set_zlabel("Altitude")
 
 plt.grid()
 
+#####################################################################
+
+fig3 = plt.figure()
+ax3 = fig3.gca(projection='3d')
+
+X3 = adjusted_path[:,0]
+Y3 = adjusted_path[:,1]
+Z3 = adjusted_path[:,2]
+
+ax3.scatter(X3, Y3, Z3)
+
+# Create cubic bounding box to simulate equal aspect ratio
+max_range3 = np.array([X3.max()-X3.min(), Y3.max()-Y3.min(), Z3.max()-Z3.min()]).max()
+Xb3 = 0.5*max_range3*np.mgrid[-1:2:2,-1:2:2,-1:2:2][0].flatten() + 0.5*(X3.max()+X3.min())
+Yb3 = 0.5*max_range3*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y3.max()+Y3.min())
+Zb3 = 0.5*max_range3*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z3.max()+Z3.min())
+# Comment or uncomment following both lines to test the fake bounding box:
+for xb3, yb3, zb3 in zip(Xb3, Yb3, Zb3):
+   ax3.plot([xb3], [yb3], [zb3], 'w')
+
+ax3.set_xlabel("x axis")
+ax3.set_ylabel("y axis")
+ax3.set_zlabel("z axis")
+
+plt.grid()
+
 plt.show()
+
+
 
 # # Find epilines corresponding to points in right image (second image) and
 # # drawing its lines on left image
