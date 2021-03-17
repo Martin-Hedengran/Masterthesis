@@ -38,7 +38,7 @@ def bundle_adjustment(focal_length, cx, cy, points_3d, rotation, translation, it
         visible = []
         for j, pose in enumerate(poses):
             #Project point to camera coordinates
-            print(point)
+            #print(point)
             z = cam.cam_map(pose * point)
             #only add the point if its visible in this frame
             if 0 <= z[0] < cx*2 and 0 <= z[1] < cy*2:
@@ -86,5 +86,7 @@ def bundle_adjustment(focal_length, cx, cy, points_3d, rotation, translation, it
     adjusted_T = []
     adjusted_R = []
     for i in range(len(poses)):
-        print(optimizer.vertex(i).estimate().translation())
-        print(optimizer.vertex(i).estimate().rotation())
+        adjusted_T.append(optimizer.vertex(i).estimate().translation())
+        adjusted_R.append(optimizer.vertex(i).estimate().rotation())
+    
+    return adjusted_R, adjusted_T
