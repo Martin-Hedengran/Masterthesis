@@ -102,9 +102,10 @@ def rotationMatrixToEulerAngles(R) :
 
     return np.array([x, y, z])
 
-def generate_path(translations):
+def generate_path(translations,startPos=np.array([[0], [0], [0], [0]])):
     path = []
-    current_point = np.array([0, 0, 0, 0])
+    #current_point = np.array([0, 0, 0, 0])
+    current_point = startPos.transpose()[0].tolist()
 
     for t in zip(translations):
         current_point = current_point + np.reshape(t, 4)
@@ -116,7 +117,7 @@ def generate_path(translations):
 
 def rescale(img):
     
-    scale_percent = 40 # percent of original size
+    scale_percent = 28 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -163,8 +164,8 @@ sift = cv2.SIFT_create()
 rotation = []
 translation = []
 position = []
-posLat = []
-posLon = []
+pgoPosition = []
+adjusted_position = []
 altitude = []
 triang_points = []
 window_size = 5
@@ -177,15 +178,23 @@ bundle_T = []
 GPSx = []
 GPSy = []
 
-GPSData = gpsphoto.getGPSData("input2/DSC00" + str(203) + ".jpg")
+GPSData = gpsphoto.getGPSData("input2/DSC00" + str(271) + ".jpg")
 
 #currPos = np.array([[111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000],[110.574*GPSData['Latitude']*1000],[GPSData['Altitude']],[1]])
 currPos = np.array([[0],[0],[0],[1]])
 
+pgoPos = currPos
+baPos = currPos
+startPos = currPos
+
+position.append(currPos)
+pgoPosition.append(currPos)
+adjusted_position.append(currPos)
+
 for i in range(51):
     # Load images
-    n = "input2/DSC00" + str(203+i) + ".jpg"
-    k = "input2/DSC00" + str(203+i+1) + ".jpg"
+    n = "input2/DSC00" + str(271+i) + ".jpg"
+    k = "input2/DSC00" + str(271+i+1) + ".jpg"
     img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)
     img2 = cv2.imread(k, cv2.IMREAD_GRAYSCALE)
 
@@ -285,6 +294,25 @@ for i in range(51):
         temp = triang_points
         triang_points = (triangulation(rotation[i-1], translation[i-1], rotation[i], translation[i], cameraMatrix, pts1, pts2, matchesMask))
         triang_points = np.concatenate((temp, triang_points), axis=0)
+    
+    # ----------------------- PGO Position ------------------------------------------------------#
+
+    pgo_R, pgo_t = bundleadjust_camera_coords.PoseOptimizer(focal_lenght, cx, cy, triang_points, R, t, 100, 0)
+
+    pgo_R = quaternion_rotation_matrix(pgo_R)
+    pgo_t = np.transpose(np.matrix(pgo_t))
+
+    print(pgo_R)
+    print(pgo_t)
+
+    pgo_H = np.concatenate((pgo_R,pgo_t), axis=1)
+    pgo_H = np.concatenate((pgo_H,np.array([[0,0,0,1]])), axis=0)
+
+    pgoPosition.append(np.matmul(pgo_H,pgoPos))
+    pgoPos = np.matmul(pgo_H,pgoPos)
+
+    # ---------------------------------------------------------------------------------------------#
+    
     if count == window_size:
         temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 100, 0)
         for l in range(len(temp_T)):
@@ -298,29 +326,27 @@ for i in range(51):
 
     GPSData = gpsphoto.getGPSData(k)
 
-    posLat.append(GPSData['Latitude'])
-    posLon.append(GPSData['Longitude'])
-
-    altitude.append(GPSData['Altitude'])
     print(GPSData)
 
     GPSy.append(110.574*GPSData['Latitude']*1000)                           # Convert Latitude to meters
     GPSx.append(111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000) # Convert Longitude to meters
-    
-path = generate_path(position)
-adjusted_position = []
+    altitude.append(GPSData['Altitude'])
+
+path = generate_path(position, startPos)
+pgoPath = generate_path(pgoPosition, startPos)
+
 H_list = []
-pos_temp = np.array([[0],[0],[0],[1]])
+
 for l in range(len(adjusted_R)):
     adjusted_H = np.concatenate((adjusted_R[l],np.transpose(np.matrix(adjusted_T[l]))), axis=1)
     adjusted_H = np.concatenate((adjusted_H,np.array([[0,0,0,1]])), axis=0)
-    adjusted_position.append(np.matmul(adjusted_H,pos_temp))
-    pos_temp = np.matmul(adjusted_H,pos_temp)
+    adjusted_position.append(np.matmul(adjusted_H,baPos))
+    baPos = np.matmul(adjusted_H,baPos)
 #print(len(H_list))
 print(adjusted_H)
 print(H)
 #print(translation)
-adjusted_path = generate_path(adjusted_position)
+adjusted_path = generate_path(adjusted_position, startPos)
 #print(adjusted_position)
 #print(adjusted_path)
 #print(path)
@@ -328,16 +354,21 @@ adjusted_path = generate_path(adjusted_position)
 #print(rotation)
 #print(rotationMatrixToEulerAngles(R))
 
-# plt.plot(posLon, posLat)
 # plt.axis('equal')
 
-fig, axs = plt.subplots(3)
+fig, axs = plt.subplots(4)
 fig.suptitle('Vertically stacked subplots')
 axs[0].plot(GPSx, GPSy)
+axs[0].set_title("GPS Data")
+
 axs[1].plot(path[:,1], -path[:,0])
-axs[2].plot(adjusted_path[:,1], -adjusted_path[:,0])
+axs[1].set_title("Visual Odometry")
 
+axs[2].plot(pgoPath[:,1], -pgoPath[:,0])
+axs[2].set_title("Pose Graph Optimization")
 
+axs[3].plot(adjusted_path[:,1], -adjusted_path[:,0])
+axs[3].set_title("Bundle Adjustment")
 
 # ----------------------- Camera Estimate ------------------- #
 
@@ -357,11 +388,13 @@ Yb = 0.5*max_range*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y.max()+Y.
 Zb = 0.5*max_range*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z.max()+Z.min())
 # Comment or uncomment following both lines to test the fake bounding box:
 for xb, yb, zb in zip(Xb, Yb, Zb):
-   ax.plot([xb], [yb], [zb], 'w')
+    ax.plot([xb], [yb], [zb], 'w')
 
 ax.set_xlabel("x axis")
 ax.set_ylabel("y axis")
 ax.set_zlabel("z axis")
+
+ax.set_title("Visual Odometry")
 
 plt.grid()
 
@@ -383,15 +416,17 @@ Yb2 = 0.5*max_range2*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y2.max()
 Zb2 = 0.5*max_range2*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z2.max()+Z2.min())
 # Comment or uncomment following both lines to test the fake bounding box:
 for xb2, yb2, zb2 in zip(Xb2, Yb2, Zb2):
-   ax2.plot([xb2], [yb2], [zb2], 'w')
+    ax2.plot([xb2], [yb2], [zb2], 'w')
 
 ax2.set_xlabel("Longitude")
 ax2.set_ylabel("Latitude")
 ax2.set_zlabel("Altitude")
 
+ax2.set_title("GPS Data")
+
 plt.grid()
 
-#####################################################################
+# ------------------ BA DATA ------------------------------------ #
 
 fig3 = plt.figure()
 ax3 = fig3.gca(projection='3d')
@@ -409,11 +444,41 @@ Yb3 = 0.5*max_range3*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y3.max()
 Zb3 = 0.5*max_range3*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z3.max()+Z3.min())
 # Comment or uncomment following both lines to test the fake bounding box:
 for xb3, yb3, zb3 in zip(Xb3, Yb3, Zb3):
-   ax3.plot([xb3], [yb3], [zb3], 'w')
+    ax3.plot([xb3], [yb3], [zb3], 'w')
 
 ax3.set_xlabel("x axis")
 ax3.set_ylabel("y axis")
 ax3.set_zlabel("z axis")
+
+ax3.set_title("Bundle Adjustment")
+
+plt.grid()
+
+# ------------------ PGO DATA ------------------------------------ #
+
+fig4 = plt.figure()
+ax4 = fig4.gca(projection='3d')
+
+X4 = pgoPath[:,0]
+Y4 = pgoPath[:,1]
+Z4 = pgoPath[:,2]
+
+ax4.scatter(X4, Y4, Z4)
+
+# Create cubic bounding box to simulate equal aspect ratio
+max_range4 = np.array([X4.max()-X4.min(), Y4.max()-Y4.min(), Z4.max()-Z4.min()]).max()
+Xb4 = 0.5*max_range4*np.mgrid[-1:2:2,-1:2:2,-1:2:2][0].flatten() + 0.5*(X4.max()+X4.min())
+Yb4 = 0.5*max_range4*np.mgrid[-1:2:2,-1:2:2,-1:2:2][1].flatten() + 0.5*(Y4.max()+Y4.min())
+Zb4 = 0.5*max_range4*np.mgrid[-1:2:2,-1:2:2,-1:2:2][2].flatten() + 0.5*(Z4.max()+Z4.min())
+# Comment or uncomment following both lines to test the fake bounding box:
+for xb4, yb4, zb4 in zip(Xb4, Yb4, Zb4):
+    ax4.plot([xb4], [yb4], [zb4], 'w')
+
+ax4.set_xlabel("x axis")
+ax4.set_ylabel("y axis")
+ax4.set_zlabel("z axis")
+
+ax4.set_title("Pose Graph Optimization")
 
 plt.grid()
 
