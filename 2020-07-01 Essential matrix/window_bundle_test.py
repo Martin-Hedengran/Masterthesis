@@ -117,7 +117,7 @@ def generate_path(translations,startPos=np.array([[0], [0], [0], [0]])):
 
 def rescale(img):
     
-    scale_percent = 28 # percent of original size
+    scale_percent = 35 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -168,7 +168,7 @@ pgoPosition = []
 adjusted_position = []
 altitude = []
 triang_points = []
-window_size = 5
+window_size = 10
 count = 0
 adjusted_R = []
 adjusted_T = []
@@ -178,10 +178,10 @@ bundle_T = []
 GPSx = []
 GPSy = []
 
-GPSData = gpsphoto.getGPSData("input2/DSC00" + str(271) + ".jpg")
+GPSData = gpsphoto.getGPSData("input2/DSC00" + str(203) + ".jpg")
 
-#currPos = np.array([[111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000],[110.574*GPSData['Latitude']*1000],[GPSData['Altitude']],[1]])
-currPos = np.array([[0],[0],[0],[1]])
+currPos = np.array([[111.320*math.cos(math.radians(GPSData['Latitude']))*GPSData['Longitude']*1000],[110.574*GPSData['Latitude']*1000],[GPSData['Altitude']],[1]])
+#currPos = np.array([[0],[0],[0],[1]])
 
 pgoPos = currPos
 baPos = currPos
@@ -191,10 +191,14 @@ position.append(currPos)
 pgoPosition.append(currPos)
 adjusted_position.append(currPos)
 
-for i in range(51):
+GPSx.append(currPos.flatten()[0])
+GPSy.append(currPos.flatten()[1])
+altitude.append(currPos.flatten()[2])
+
+for i in range(50):
     # Load images
-    n = "input2/DSC00" + str(271+i) + ".jpg"
-    k = "input2/DSC00" + str(271+i+1) + ".jpg"
+    n = "input2/DSC00" + str(203+i) + ".jpg"
+    k = "input2/DSC00" + str(203+i+1) + ".jpg"
     img1 = cv2.imread(n, cv2.IMREAD_GRAYSCALE)
     img2 = cv2.imread(k, cv2.IMREAD_GRAYSCALE)
 
@@ -313,14 +317,16 @@ for i in range(51):
 
     # ---------------------------------------------------------------------------------------------#
     
-    if count == window_size:
+    if count == window_size - 1:
         temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 100, 0)
         for l in range(len(temp_T)):
             adjusted_R.append(quaternion_rotation_matrix(temp_R[l]))
             adjusted_T.append(temp_T[l])
         count = 0
         triang_points = []
-    count+=1
+    else: 
+        count+=1
+    
     print("done with img "+str(i))
 
 
