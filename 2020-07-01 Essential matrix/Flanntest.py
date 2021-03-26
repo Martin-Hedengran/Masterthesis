@@ -2,6 +2,7 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 import math
+import symmetric_transfer_error
 
 MIN_MATCH_COUNT = 10
 
@@ -96,7 +97,17 @@ cv2.imwrite('sift_match_' + str(counter) + '.png',img_siftmatch)
 #########################
 #2----essential matrix--#
 #########################
-E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0);
+E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
+F, F_mask = cv2.findFundamentalMat(p1, p2, cv2.FM_LMEDS)
+M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
+E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
+H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+
+#print("F matrix")
+#print(F)
+print(E_score)
+print(H_score)
+#RH = H_score / (H_score + E_score)
 
 matchesMask = mask.ravel().tolist()
 
@@ -158,6 +169,7 @@ point_3d = point_3d[:3, :].T
 #############################
 #5----output 3D pointcloud--#
 #############################
+'''
 #TODO: Display 3D points
 fig = plt.figure()
 ax = fig.add_subplot(111, projection='3d')
@@ -170,3 +182,4 @@ for x, y, z in point_3d:
 
 plt.show()
 fig.savefig('3-D_' + str(counter) + '.jpg')
+'''

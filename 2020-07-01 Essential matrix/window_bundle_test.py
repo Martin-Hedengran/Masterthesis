@@ -117,7 +117,7 @@ def generate_path(translations,startPos=np.array([[0], [0], [0], [0]])):
 
 def rescale(img):
     
-    scale_percent = 35 # percent of original size
+    scale_percent = 20 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -168,7 +168,7 @@ pgoPosition = []
 adjusted_position = []
 altitude = []
 triang_points = []
-window_size = 10
+window_size = 5
 count = 0
 adjusted_R = []
 adjusted_T = []
@@ -318,7 +318,7 @@ for i in range(50):
     # ---------------------------------------------------------------------------------------------#
     
     if count == window_size - 1:
-        temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 100, 0)
+        temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 10, 0)
         for l in range(len(temp_T)):
             adjusted_R.append(quaternion_rotation_matrix(temp_R[l]))
             adjusted_T.append(temp_T[l])
