@@ -159,7 +159,10 @@ def triangulation(R_first, T_first, R_second, T_second, cameraMatrix, p1, p2, ma
 
 # Initiate detector
 #orb = cv2.ORB_create()
-sift = cv2.SIFT_create()
+#sift = cv2.SIFT_create()
+fast = cv2.FastFeatureDetector_create()
+#! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
+descriptor = cv2.xfeatures2d.BEBLID_create(5)
 
 rotation = []
 translation = []
@@ -237,23 +240,36 @@ for i in range(50):
     # pts1 = pts1[mask.ravel()==1]
     # pts2 = pts2[mask.ravel()==1]
 
-    # -------------------- SIFT TEST --------------------------------- #
+    ###############################
+    #----Fast feature matching----#
+    ###############################
+    #!Note: fast doesnt have descriptors, only detection hence the use of BEBLID descriptors.
 
-    MIN_MATCH_COUNT = 10
+    fast = cv2.FastFeatureDetector_create()
+    #! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
+    descriptor = cv2.xfeatures2d.BEBLID_create(5)
 
-    kp1, des1 = sift.detectAndCompute(img1,None)
-    kp2, des2 = sift.detectAndCompute(img2,None)
+    kp1 = fast.detect(img1, None)
+    kp2 = fast.detect(img2, None)
+    kp1, des1 = descriptor.compute(img1, kp1)
+    kp2, des2 = descriptor.compute(img2, kp2)
+    #Bruteforce hamming distance
+    #matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
+    #matches = matcher.knnMatch(des1, des2, 2)
 
-    #use flann to perform feature matching
-    FLANN_INDEX_KDTREE = 0
-    index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    #Flann matching using LSH(Close to hamming distance)
+    FLANN_INDEX_LSH = 6
+    index_params= dict(algorithm = FLANN_INDEX_LSH,
+                    table_number = 6, # 12
+                    key_size = 12,     # 20
+                    multi_probe_level = 1) #2
     search_params = dict(checks = 50)
-
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
     matches = flann.knnMatch(des1,des2,k=2)
 
-    # store all the good matches as per Lowe's ratio test.
+    MIN_MATCH_COUNT = 10
+
     good = []
     for m,n in matches:
         if m.distance < 0.7*n.distance:
@@ -262,6 +278,33 @@ for i in range(50):
     if len(good)>MIN_MATCH_COUNT:
         pts1 = np.float64([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
         pts2 = np.float64([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+
+
+    # -------------------- SIFT TEST --------------------------------- #
+
+    # MIN_MATCH_COUNT = 10
+
+    # kp1, des1 = sift.detectAndCompute(img1,None)
+    # kp2, des2 = sift.detectAndCompute(img2,None)
+
+    # #use flann to perform feature matching
+    # FLANN_INDEX_KDTREE = 0
+    # index_params = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+    # search_params = dict(checks = 50)
+
+    # flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+    # matches = flann.knnMatch(des1,des2,k=2)
+
+    # store all the good matches as per Lowe's ratio test.
+    # good = []
+    # for m,n in matches:
+    #     if m.distance < 0.7*n.distance:
+    #         good.append(m)
+    # print(len(good))
+    # if len(good)>MIN_MATCH_COUNT:
+    #     pts1 = np.float64([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+    #     pts2 = np.float64([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
 
     # ---------------------------------------------------------------- #
 
