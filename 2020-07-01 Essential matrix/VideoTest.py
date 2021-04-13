@@ -63,8 +63,8 @@ class FeatureExtractor(object):
                 u2,v2 = map(lambda x: int(round(x)), pt2.pt)
                 cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
                 cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
-                cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
-                cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
         self.last_frame = {'kp': kp, 'des': des}
         return img
     
@@ -93,8 +93,8 @@ class FeatureExtractor(object):
                 u2,v2 = map(lambda x: int(round(x)), pt2.pt)
                 cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
                 cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
-                cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
-                cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
         self.last_frame_sift = {'kp': kp, 'des': des}
         return img
 fe = FeatureExtractor()
