@@ -57,12 +57,37 @@ K = np.array([[focal_lenght,   0.,         cx ],
                 [  0.,         focal_lenght, cy ],
                 [0., 0., 1.]])
 
+###############################
+#----Fast feature matching----#
+###############################
+#!Note: fast doesnt have descriptors, only detection hence the use of BEBLID descriptors.
 
+fast = cv2.FastFeatureDetector_create()
+#! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
+descriptor = cv2.xfeatures2d.BEBLID_create(5)
 
+kp1 = fast.detect(img1, None)
+kp2 = fast.detect(img2, None)
+kp1, des1 = descriptor.compute(img1, kp1)
+kp2, des2 = descriptor.compute(img2, kp2)
+#Bruteforce hamming distance
+#matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
+#matches = matcher.knnMatch(des1, des2, 2)
+
+#Flann matching using LSH(Close to hamming distance)
+FLANN_INDEX_LSH = 6
+index_params= dict(algorithm = FLANN_INDEX_LSH,
+                   table_number = 6, # 12
+                   key_size = 12,     # 20
+                   multi_probe_level = 1) #2
+search_params = dict(checks = 50)
+flann = cv2.FlannBasedMatcher(index_params, search_params)
+
+matches = flann.knnMatch(des1,des2,k=2)
 ###############################
 #1----SIFT feature matching---#
 ###############################
-
+'''
 #detect sift features for both images
 sift = cv2.SIFT_create()
 kp1, des1 = sift.detectAndCompute(img1,None)
@@ -76,7 +101,7 @@ search_params = dict(checks = 50)
 flann = cv2.FlannBasedMatcher(index_params, search_params)
 
 matches = flann.knnMatch(des1,des2,k=2)
-
+'''
 # store all the good matches as per Lowe's ratio test.
 good = []
 for m,n in matches:

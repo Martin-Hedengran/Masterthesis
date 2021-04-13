@@ -64,7 +64,7 @@ def checkHomographyScore(H, pts1, pts2, sigma=1.0):
         c1 = (Hinv[1,0] * pt2[0] + Hinv[1,1] * pt2[1] + Hinv[1,2]) * a1
 
         squareDist1 = (pt1[0] - b1)**2 + (pt1[1] - c1)**2
-        print(squareDist1)
+        #print(squareDist1)
         chiSquare1  = squareDist1 * invSigmaSquare
         if chiSquare1 <= th:
             score = score + th - chiSquare1
@@ -75,7 +75,7 @@ def checkHomographyScore(H, pts1, pts2, sigma=1.0):
         c2 = (H[1,0] * pt1[0] + H[1,1] * pt1[1] + H[1,2]) * a2
 
         squareDist2 = (pt2[0] - b2)**2 + (pt2[1] - c2)**2
-        print(squareDist2)
+        #print(squareDist2)
         chiSquare2 = squareDist2 * invSigmaSquare
         if chiSquare2 <= th:
             score = score + th - chiSquare2
