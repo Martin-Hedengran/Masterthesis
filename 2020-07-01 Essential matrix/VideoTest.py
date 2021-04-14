@@ -1,17 +1,50 @@
 #!/usr/bin/env python3
 import cv2
 import numpy as np
+from codetiming import Timer
+from skimage.measure import ransac
+from skimage.transform import FundamentalMatrixTransform
 
-#Img scaled to 40 percent for viewer
-Display_height = 2160 * 30 / 100
-Display_width= 3840 * 30 / 100
+#Img scaled to 40 percent for 
+Display_scale = 25
+Display_height = 2160 * Display_scale / 100
+Display_width= 3840 * Display_scale / 100
 Display_dim = (int(Display_width), int(Display_height))
+
+class CameraSettings():
+    def __init__(self):
+        # DJI Phantom 4 pro
+        # Calibration from Metashape 
+        #! The values from metashape are offset from optical center
+        self.cameraMatrix = np.array([[3657,   0.,         5472 / 2 - 33 ],
+                                [  0.,         3657, 3648 / 2 - 3.5 ],
+                                [0., 0., 1.]])
+        self.distCoeffs = np.array(
+                [[ 0.0029, 0.0155, 0.014, 0.0022, 0.00025 ]])
+    
+    def MatrixScaling():
+        self.scale_factor = 0.20
+        #self.scale_factor = 1
+        self.cameraMatrix *= self.scale_factor
+        self.cameraMatrix[2, 2] = 1
+        
+        return cameraMatrix
+
+    def ImageScaling(self, img):
+        width = int(img.shape[1] * self.scale_factor)
+        height = int(img.shape[0] * self.scale_factor)
+        dim = (width, height)
+        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+        return img
+
 
 class FeatureExtractor(object):
     def __init__(self):
         self.last_frame = None
         self.last_frame_sift = None
-        #Hardcode image dimensions
+        self.last_frame_orb = None
+        self.last_frame_beblid = None
+        #Hardcode image dimensions 768x432
         self.scale_percent = 20
         self.height = 2160 * self.scale_percent / 100
         self.width= 3840 * self.scale_percent / 100
@@ -22,9 +55,10 @@ class FeatureExtractor(object):
         self.fast = cv2.FastFeatureDetector_create()
         #! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
         self.descriptor = cv2.xfeatures2d.BEBLID_create(5)
+        self.descriptor_orb = cv2.xfeatures2d.BEBLID_create(1)
 
         self.sift = cv2.SIFT_create()
-
+        self.orb = cv2.ORB_create()
         #Bruteforce hamming distance
         self.matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
         self.bfmatch = cv2.BFMatcher()
@@ -37,6 +71,13 @@ class FeatureExtractor(object):
         self.search_params = dict(checks = 50)
         self.flann = cv2.FlannBasedMatcher(self.index_params, self.search_params)
 
+        FLANN_INDEX_KDTREE = 0
+        self.index_params_sift = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        self.search_params_sift = dict(checks = 50)
+
+        self.flann_sift = cv2.FlannBasedMatcher(self.index_params_sift, self.search_params_sift)
+    
+    @Timer(text="fast: {:.4f}")
     def process_frame(self, img):
         #Img resizing
         img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
@@ -55,19 +96,33 @@ class FeatureExtractor(object):
             # store all the good matches as per Lowe's ratio test.
             for m,n in matches:
                 if m.distance < 0.7*n.distance:
-                    good.append((kp[m.queryIdx], self.last_frame['kp'][m.trainIdx]))
-            
+                    kp1 = kp[m.queryIdx].pt
+                    kp2 = self.last_frame['kp'][m.trainIdx].pt
+                    good.append((kp1, kp2))
+            '''
+        #Fundamental matrix filter
+        if len(good) > 0:
+            good = np.array(good)
+            model, inliers = ransac((good[:, 0], good[:, 1]), 
+                                    FundamentalMatrixTransform,
+                                    min_samples = 8,
+                                    residual_threshold = 1,
+                                    max_trials = 100)
+            good = good[inliers]
+            '''
             #Draw matches and points
             for pt1, pt2 in good:
-                u1,v1 = map(lambda x: int(round(x)), pt1.pt)
-                u2,v2 = map(lambda x: int(round(x)), pt2.pt)
+                u1,v1 = map(lambda x: int(round(x)), pt1)
+                u2,v2 = map(lambda x: int(round(x)), pt2)
                 cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
                 cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
+            cv2.putText(img, 'fast + beblid', (50,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
         self.last_frame = {'kp': kp, 'des': des}
         return img
-    
+        
+    @Timer(text="sift: {:.4f}")
     def sift_frame(self, img):
         #Img resizing
         img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
@@ -80,7 +135,7 @@ class FeatureExtractor(object):
             if len(kp) < 500:
                 matches = self.bfmatch.knnMatch(des, self.last_frame_sift['des'], k=2)
             else:
-                matches = self.flann.knnMatch(des,self.last_frame_sift['des'],k=2)
+                matches = self.flann_sift.knnMatch(des,self.last_frame_sift['des'],k=2)
             
             # store all the good matches as per Lowe's ratio test.
             for m,n in matches:
@@ -93,10 +148,78 @@ class FeatureExtractor(object):
                 u2,v2 = map(lambda x: int(round(x)), pt2.pt)
                 cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
                 cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
+            cv2.putText(img, 'SIFT', (50,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
         self.last_frame_sift = {'kp': kp, 'des': des}
         return img
+
+    @Timer(text="orb: {:.4f}")
+    def orb_frame(self, img):
+        #Img resizing
+        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+        #Feature extracting
+        kp = self.orb.detect(img, None)
+        kp, des = self.orb.compute(img, kp)
+        #Feature matching
+        good = []
+        if self.last_frame_orb is not None:
+            #If less than 500 keypoints use bf matcher
+            if len(kp) < 500:
+                matches = self.matcher.knnMatch(des, self.last_frame_orb['des'], 2)
+            else:
+                matches = self.flann.knnMatch(des,self.last_frame_orb['des'],k=2)
+            
+            # store all the good matches as per Lowe's ratio test.
+            for m,n in matches:
+                if m.distance < 0.7*n.distance:
+                    good.append((kp[m.queryIdx], self.last_frame_orb['kp'][m.trainIdx]))
+            
+            #Draw matches and points
+            for pt1, pt2 in good:
+                u1,v1 = map(lambda x: int(round(x)), pt1.pt)
+                u2,v2 = map(lambda x: int(round(x)), pt2.pt)
+                cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
+                cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
+            cv2.putText(img, 'ORB', (50,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+        self.last_frame_orb = {'kp': kp, 'des': des}
+        return img
+
+    @Timer(text="orb + beblid: {:.4f}")
+    def beblid_frame(self, img):
+        #Img resizing
+        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+        #Feature extracting
+        kp = self.orb.detect(img, None)
+        kp, des = self.descriptor_orb.compute(img, kp)
+        #Feature matching
+        good = []
+        if self.last_frame_beblid is not None:
+            #If less than 500 keypoints use bf matcher
+            if len(kp) < 500:
+                matches = self.matcher.knnMatch(des, self.last_frame_beblid['des'], 2)
+            else:
+                matches = self.flann.knnMatch(des,self.last_frame_beblid['des'],k=2)
+            
+            # store all the good matches as per Lowe's ratio test.
+            for m,n in matches:
+                if m.distance < 0.7*n.distance:
+                    good.append((kp[m.queryIdx], self.last_frame_beblid['kp'][m.trainIdx]))
+            
+            #Draw matches and points
+            for pt1, pt2 in good:
+                u1,v1 = map(lambda x: int(round(x)), pt1.pt)
+                u2,v2 = map(lambda x: int(round(x)), pt2.pt)
+                cv2.circle(img, (u1,v1), color=(0,255,0), radius=3)
+                cv2.line(img, (u1,v1), (u2,v2), (255,0,0))
+            cv2.putText(img, 'ORB + beblid', (50,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
+            cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+        self.last_frame_beblid = {'kp': kp, 'des': des}
+        return img
+
 fe = FeatureExtractor()
 
 if __name__=="__main__":
@@ -106,10 +229,17 @@ if __name__=="__main__":
         if ret == True:
             img = fe.process_frame(frame)
             img_sift = fe.sift_frame(frame)
+            img_orb = fe.orb_frame(frame)
+            img_beblid = fe.beblid_frame(frame)
             resize = cv2.resize(img, Display_dim, interpolation = cv2.INTER_AREA)
             resize_sift = cv2.resize(img_sift, Display_dim, interpolation = cv2.INTER_AREA)
+            resize_orb = cv2.resize(img_orb, Display_dim, interpolation = cv2.INTER_AREA)
+            resize_beblid = cv2.resize(img_beblid, Display_dim, interpolation = cv2.INTER_AREA)
             resize = np.concatenate((resize, resize_sift), axis=1)
-            cv2.imshow('fast output', resize)
+            resize_orb = np.concatenate((resize_orb, resize_beblid), axis=1)
+            final_img = np.concatenate((resize, resize_orb), axis=0)
+            cv2.imshow('fast output', final_img)
+            print("--------")
             #cv2.imshow('sift output', resize_sift)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
