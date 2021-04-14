@@ -203,9 +203,9 @@ ret,frame = raw.read()
 
 img1 = rescale(frame)
 
-for i in range(40):
+for i in range(130):
     # Load images
-    for j in range(49):
+    for j in range(24):
         raw.grab()
     ret,frame = raw.read()
     img2 = img1
@@ -372,7 +372,9 @@ for i in range(40):
     pgo_H = np.concatenate((pgo_R,pgo_t), axis=1)
     pgo_H = np.concatenate((pgo_H,np.array([[0,0,0,1]])), axis=0)
 
-    pgoPosition.append(np.matmul(pgo_H,pgoPos))
+    pgoPosAdj = transform @ np.matmul(pgo_H,pgoPos)
+
+    pgoPosition.append(pgoPosAdj)
     pgoPos = np.matmul(pgo_H,pgoPos)
 
     # ---------------------------------------------------------------------------------------------#
@@ -398,7 +400,10 @@ H_list = []
 for l in range(len(adjusted_R)):
     adjusted_H = np.concatenate((adjusted_R[l],np.transpose(np.matrix(adjusted_T[l]))), axis=1)
     adjusted_H = np.concatenate((adjusted_H,np.array([[0,0,0,1]])), axis=0)
-    adjusted_position.append(np.matmul(adjusted_H,baPos))
+
+    adjusted_position_pitch_correction = transform @ np.matmul(adjusted_H,baPos)
+
+    adjusted_position.append(adjusted_position_pitch_correction)
     baPos = np.matmul(adjusted_H,baPos)
 #print(len(H_list))
 print(adjusted_H)
@@ -420,10 +425,10 @@ fig.suptitle('Vertically stacked subplots')
 axs[1].plot(path[:,2], path[:,0])
 axs[1].set_title("Visual Odometry")
 
-axs[2].plot(pgoPath[:,1], pgoPath[:,0])
+axs[2].plot(pgoPath[:,2], pgoPath[:,0])
 axs[2].set_title("Pose Graph Optimization")
 
-axs[3].plot(adjusted_path[:,1], adjusted_path[:,0])
+axs[3].plot(adjusted_path[:,2], adjusted_path[:,0])
 axs[3].set_title("Bundle Adjustment")
 
 # ----------------------- Camera Estimate ------------------- #
@@ -487,9 +492,9 @@ plt.grid()
 fig3 = plt.figure()
 ax3 = fig3.gca(projection='3d')
 
-X3 = adjusted_path[:,0]
-Y3 = adjusted_path[:,1]
-Z3 = adjusted_path[:,2]
+X3 = adjusted_path[:,2]
+Y3 = adjusted_path[:,0]
+Z3 = -adjusted_path[:,1]
 
 ax3.scatter(X3, Y3, Z3)
 
@@ -515,9 +520,9 @@ plt.grid()
 fig4 = plt.figure()
 ax4 = fig4.gca(projection='3d')
 
-X4 = pgoPath[:,0]
-Y4 = pgoPath[:,1]
-Z4 = pgoPath[:,2]
+X4 = pgoPath[:,2]
+Y4 = pgoPath[:,0]
+Z4 = -pgoPath[:,1]
 
 ax4.scatter(X4, Y4, Z4)
 
