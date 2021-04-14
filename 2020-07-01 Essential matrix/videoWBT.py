@@ -335,7 +335,20 @@ for i in range(40):
     H = np.concatenate((H,np.array([[0,0,0,1]])), axis=0)
     #print("R: "+ str(R) +"\t t: " + str(t) +"\t H: "+ str(H))
     #print(currPos)
-    position.append(np.matmul(H,currPos))
+
+    pos = np.matmul(H,currPos)
+
+    # Adjust for camera pitch
+    pitch = 19.7 / 180 * np.pi
+    transform = np.array(
+            [[1, 0, 0, 0],
+             [0, np.cos(pitch), np.sin(pitch), 0], 
+             [0, -np.sin(pitch), np.cos(pitch), 0], 
+             [0, 0, 0, 1]])
+
+    pos = transform @ pos
+
+    position.append(pos)
     currPos = np.matmul(H,currPos)
     if i == 0:
         triang_points = (triangulation(np.eye(3, 3), np.zeros((3, 1)), R, t, cameraMatrix, pts1, pts2, matchesMask))
@@ -404,7 +417,7 @@ adjusted_path = generate_path(adjusted_position, startPos)
 fig, axs = plt.subplots(4)
 fig.suptitle('Vertically stacked subplots')
 
-axs[1].plot(path[:,1], path[:,0])
+axs[1].plot(path[:,2], path[:,0])
 axs[1].set_title("Visual Odometry")
 
 axs[2].plot(pgoPath[:,1], pgoPath[:,0])
@@ -418,9 +431,9 @@ axs[3].set_title("Bundle Adjustment")
 fig = plt.figure()
 ax = fig.gca(projection='3d')
 
-X = path[:,0]
-Y = path[:,1]
-Z = path[:,2]
+X = path[:,2]
+Y = path[:,0]
+Z = -path[:,1]
 
 ax.scatter(X, Y, Z)
 
