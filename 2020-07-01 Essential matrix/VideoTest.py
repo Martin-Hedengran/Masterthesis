@@ -5,10 +5,38 @@ from codetiming import Timer
 from skimage.measure import ransac
 from skimage.transform import FundamentalMatrixTransform
 
-#Img scaled to 40 percent for viewer
-Display_height = 2160 * 30 / 100
-Display_width= 3840 * 30 / 100
+#Img scaled to 40 percent for 
+Display_scale = 25
+Display_height = 2160 * Display_scale / 100
+Display_width= 3840 * Display_scale / 100
 Display_dim = (int(Display_width), int(Display_height))
+
+class CameraSettings():
+    def __init__(self):
+        # DJI Phantom 4 pro
+        # Calibration from Metashape 
+        #! The values from metashape are offset from optical center
+        self.cameraMatrix = np.array([[3657,   0.,         5472 / 2 - 33 ],
+                                [  0.,         3657, 3648 / 2 - 3.5 ],
+                                [0., 0., 1.]])
+        self.distCoeffs = np.array(
+                [[ 0.0029, 0.0155, 0.014, 0.0022, 0.00025 ]])
+    
+    def MatrixScaling():
+        self.scale_factor = 0.20
+        #self.scale_factor = 1
+        self.cameraMatrix *= self.scale_factor
+        self.cameraMatrix[2, 2] = 1
+        
+        return cameraMatrix
+
+    def ImageScaling(self, img):
+        width = int(img.shape[1] * self.scale_factor)
+        height = int(img.shape[0] * self.scale_factor)
+        dim = (width, height)
+        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+        return img
+
 
 class FeatureExtractor(object):
     def __init__(self):
@@ -16,7 +44,7 @@ class FeatureExtractor(object):
         self.last_frame_sift = None
         self.last_frame_orb = None
         self.last_frame_beblid = None
-        #Hardcode image dimensions
+        #Hardcode image dimensions 768x432
         self.scale_percent = 20
         self.height = 2160 * self.scale_percent / 100
         self.width= 3840 * self.scale_percent / 100
@@ -27,6 +55,7 @@ class FeatureExtractor(object):
         self.fast = cv2.FastFeatureDetector_create()
         #! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
         self.descriptor = cv2.xfeatures2d.BEBLID_create(5)
+        self.descriptor_orb = cv2.xfeatures2d.BEBLID_create(1)
 
         self.sift = cv2.SIFT_create()
         self.orb = cv2.ORB_create()
@@ -41,6 +70,12 @@ class FeatureExtractor(object):
                         multi_probe_level = 1) #2
         self.search_params = dict(checks = 50)
         self.flann = cv2.FlannBasedMatcher(self.index_params, self.search_params)
+
+        FLANN_INDEX_KDTREE = 0
+        self.index_params_sift = dict(algorithm = FLANN_INDEX_KDTREE, trees = 5)
+        self.search_params_sift = dict(checks = 50)
+
+        self.flann_sift = cv2.FlannBasedMatcher(self.index_params_sift, self.search_params_sift)
     
     @Timer(text="fast: {:.4f}")
     def process_frame(self, img):
@@ -100,7 +135,7 @@ class FeatureExtractor(object):
             if len(kp) < 500:
                 matches = self.bfmatch.knnMatch(des, self.last_frame_sift['des'], k=2)
             else:
-                matches = self.flann.knnMatch(des,self.last_frame_sift['des'],k=2)
+                matches = self.flann_sift.knnMatch(des,self.last_frame_sift['des'],k=2)
             
             # store all the good matches as per Lowe's ratio test.
             for m,n in matches:
@@ -158,7 +193,7 @@ class FeatureExtractor(object):
         img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
         #Feature extracting
         kp = self.orb.detect(img, None)
-        kp, des = self.descriptor.compute(img, kp)
+        kp, des = self.descriptor_orb.compute(img, kp)
         #Feature matching
         good = []
         if self.last_frame_beblid is not None:
