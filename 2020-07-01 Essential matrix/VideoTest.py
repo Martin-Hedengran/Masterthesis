@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
 import cv2
 import numpy as np
+import collections
 from codetiming import Timer
 from skimage.measure import ransac
 from skimage.transform import EssentialMatrixTransform
 import symmetric_transfer_error
+import pangolin
+import OpenGL.GL as gl
 
 
 #Img scaled to 40 percent for 
@@ -13,67 +16,28 @@ Display_height = 2160 * Display_scale / 100
 Display_width= 3840 * Display_scale / 100
 Display_dim = (int(Display_width), int(Display_height))
 
-class PoseEstimation():
+Matches3d = collections.namedtuple('Matches3d', ['points', 'frameid'])
+Pose = collections.namedtuple('Pose', ['pose', 'frameid'])
+class PangoViewer(object):
     def __init__(self):
-        self.first_frame = None
-    def EstimateRt(self, p1, p2, K):
-        E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
-        M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
-        E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
-        H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
-        if self.first_frame == None:
-            R = np.eye(3, 3)
-            t = np.zeros((3, 1))
-            return R, t
+        pangolin.CreateWindowAndBind('Main', 640, 480)
+        gl.glEnable(gl.GL_DEPTH_TEST)
+        # Define Projection and initial ModelView matrix
+        self.scam = pangolin.OpenGlRenderState(
+        pangolin.ProjectionMatrix(640, 480, 420, 420, 320, 240, 0.2, 100),
+        pangolin.ModelViewLookAt(-2, 2, -2, 0, 0, 0, pangolin.AxisDirection.AxisY))
+        self.handler = pangolin.Handler3D(self.scam)
+        # Create Interactive View in window
+        self.dcam = pangolin.CreateDisplay()
+        self.dcam.SetBounds(0.0, 1.0, 0.0, 1.0, -640.0/480.0)
+        self.dcam.SetHandler(self.handler)
 
-        if E_score >= H_score:
-            points, R, t, mask = cv2.recoverPose(E, p1, p2)
-        
-        else:
-            H = np.transpose(H)
-            h1 = H[0]
-            h2 = H[1]
-            h3 = H[2]
+    def window_update(self, points):
+        gl.glPointSize(10)
+        gl.glColor3f(1.0, 0.0, 0.0)
+        pangolin.DrawPoints(points)
+        pangolin.FinishFrame()
 
-            Kinv = np.linalg.inv(K)
-
-            L = 1 / np.linalg.norm(np.dot(Kinv, h1))
-
-            r1 = L * np.dot(Kinv, h1)
-            r2 = L * np.dot(Kinv, h2)
-            r3 = np.cross(r1, r2)
-
-            t = L * np.dot(Kinv, h3)
-
-            R = np.array([[r1], [r2], [r3]])
-            R = np.reshape(R, (3, 3))
-            U, S, V = np.linalg.svd(R, full_matrices=True)
-
-            U = np.matrix(U)
-            V = np.matrix(V)
-            R = U * V
-            mask = H_mask
-        
-        matchesMask = mask.ravel().tolist()
-        return R, t, matchesMask
-    
-    def Triangulation(self, K, pose1, pose2, matchesMask):
-        #calculate projection matrix for both camera
-        P_l = np.dot(K,  pose1)
-        P_r = np.dot(K,  pose2)
-
-        # undistort points
-        p1 = p1[np.asarray(matchesMask)==1,:,:]
-        p2 = p2[np.asarray(matchesMask)==1,:,:]
-        p1_un = cv2.undistortPoints(p1,K,None)
-        p2_un = cv2.undistortPoints(p2,K,None)
-        p1_un = np.squeeze(p1_un)
-        p2_un = np.squeeze(p2_un)
-
-        #triangulate points this requires points in normalized coordinate
-        point_4d_hom = cv2.triangulatePoints(P_l, P_r, p1_un.T, p2_un.T)
-        point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
-        point_3d = point_3d[:3, :].T    
 
 class CameraSettings():
     def __init__(self):
@@ -142,6 +106,63 @@ class FeatureExtractor(object):
 
         self.flann_sift = cv2.FlannBasedMatcher(self.index_params_sift, self.search_params_sift)
     
+
+    @Timer(text="pose estimate: {:.4f}")
+    def EstimateRt(self, p1, p2, K):
+        E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
+        M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
+        E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
+        H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+        if E_score >= H_score:
+            points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
+        else:
+            H = np.transpose(M)
+            h1 = H[0]
+            h2 = H[1]
+            h3 = H[2]
+
+            Kinv = np.linalg.inv(K)
+
+            L = 1 / np.linalg.norm(np.dot(Kinv, h1))
+
+            r1 = L * np.dot(Kinv, h1)
+            r2 = L * np.dot(Kinv, h2)
+            r3 = np.cross(r1, r2)
+
+            t = L * np.dot(Kinv, h3)
+
+            R = np.array([[r1], [r2], [r3]])
+            R = np.reshape(R, (3, 3))
+            U, S, V = np.linalg.svd(R, full_matrices=True)
+
+            U = np.matrix(U)
+            V = np.matrix(V)
+            R = U * V
+            mask = H_mask
+        matchesMask = mask.ravel().tolist()
+        return R, t, matchesMask
+    @Timer(text="Triangulation: {:.4f}")
+    def Triangulation(self, K, pose1, pose2, matchesMask, p1, p2):
+        #calculate projection matrix for both camera
+        P_l = np.dot(K,  pose1)
+        P_r = np.dot(K,  pose2)
+        #print(matchesMask)
+        # undistort points
+        p1 = p1[np.asarray(matchesMask)==1,:]
+        p2 = p2[np.asarray(matchesMask)==1,:]
+    
+        p1_un = cv2.undistortPoints(p1,K,None)
+        p2_un = cv2.undistortPoints(p2,K,None)
+        p1_un = np.squeeze(p1_un)
+        p2_un = np.squeeze(p2_un)
+
+        #triangulate points this requires points in normalized coordinate
+        point_4d_hom = cv2.triangulatePoints(P_l, P_r, p1_un.T, p2_un.T)
+        point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
+        point_3d = point_3d[:3, :].T
+        
+        return point_3d
+    
     @Timer(text="fast: {:.4f}")
     def process_frame(self, img, K):
         #Feature extracting
@@ -191,71 +212,14 @@ class FeatureExtractor(object):
 
             #Triangulate points
             self.points3d = self.Triangulation(K, self.pose, current_pose, self.mask, good[:, 0], good[:, 1])
-
             #Reject points behind the camera
             self.good_pts3d = (np.abs(self.points3d[:, 2]) > 0)
             
             self.pose = current_pose
-            
+        temp = self.pose[:, 3:].T
         self.last_frame = {'kp': kp, 'des': des}
-        return img, good
+        return img, self.pose[:, 3:].T
         
-    @Timer(text="pose estimate: {:.4f}")
-    def EstimateRt(self, p1, p2, K):
-        E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
-        M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
-        E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
-        H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
-        if E_score >= H_score:
-            points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
-        else:
-            H = np.transpose(H)
-            h1 = H[0]
-            h2 = H[1]
-            h3 = H[2]
-
-            Kinv = np.linalg.inv(K)
-
-            L = 1 / np.linalg.norm(np.dot(Kinv, h1))
-
-            r1 = L * np.dot(Kinv, h1)
-            r2 = L * np.dot(Kinv, h2)
-            r3 = np.cross(r1, r2)
-
-            t = L * np.dot(Kinv, h3)
-
-            R = np.array([[r1], [r2], [r3]])
-            R = np.reshape(R, (3, 3))
-            U, S, V = np.linalg.svd(R, full_matrices=True)
-
-            U = np.matrix(U)
-            V = np.matrix(V)
-            R = U * V
-            mask = H_mask
-        matchesMask = mask.ravel().tolist()
-        return R, t, matchesMask
-
-    def Triangulation(self, K, pose1, pose2, matchesMask, p1, p2):
-        #calculate projection matrix for both camera
-        P_l = np.dot(K,  pose1)
-        P_r = np.dot(K,  pose2)
-        #print(matchesMask)
-        # undistort points
-        p1 = p1[np.asarray(matchesMask)==1,:]
-        p2 = p2[np.asarray(matchesMask)==1,:]
-    
-        p1_un = cv2.undistortPoints(p1,K,None)
-        p2_un = cv2.undistortPoints(p2,K,None)
-        p1_un = np.squeeze(p1_un)
-        p2_un = np.squeeze(p2_un)
-
-        #triangulate points this requires points in normalized coordinate
-        point_4d_hom = cv2.triangulatePoints(P_l, P_r, p1_un.T, p2_un.T)
-        point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
-        point_3d = point_3d[:3, :].T
-        
-        return point_3d
-    
     @Timer(text="sift: {:.4f}")
     def sift_frame(self, img):
         #Img resizing
@@ -362,7 +326,7 @@ class FeatureExtractor(object):
 
 fe = FeatureExtractor()
 cam = CameraSettings()
-pe = PoseEstimation()
+pango = PangoViewer()
 
 if __name__=="__main__":
     cap = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
@@ -370,8 +334,10 @@ if __name__=="__main__":
         ret,frame = cap.read()
         if ret == True:
             frame, K, distort = cam.ImageScaling(frame)
-            img, matches = fe.process_frame(frame, K)
+            img, pose = fe.process_frame(frame, K)
+            pango.window_update(pose)
             cv2.imshow('fast output', img)
+
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
     cap.release()
