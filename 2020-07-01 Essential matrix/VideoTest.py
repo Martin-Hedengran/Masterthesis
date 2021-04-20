@@ -6,6 +6,7 @@ from skimage.measure import ransac
 from skimage.transform import EssentialMatrixTransform
 import symmetric_transfer_error
 
+
 #Img scaled to 40 percent for 
 Display_scale = 30
 Display_height = 2160 * Display_scale / 100
@@ -58,7 +59,6 @@ class PoseEstimation():
     
     def Triangulation(self, K, pose1, pose2, matchesMask):
         #calculate projection matrix for both camera
-
         P_l = np.dot(K,  pose1)
         P_r = np.dot(K,  pose2)
 
@@ -99,7 +99,7 @@ class CameraSettings():
         width = int(img.shape[1] * self.scale_factor)
         height = int(img.shape[0] * self.scale_factor)
         dim = (width, height)
-        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+        img = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
 
         #self.scale_factor = 1
         self.cameraMatrix *= self.scale_factor
@@ -113,11 +113,7 @@ class FeatureExtractor(object):
         self.last_frame_sift = None
         self.last_frame_orb = None
         self.last_frame_beblid = None
-        #Hardcode image dimensions 768x432
-        self.scale_percent = 20
-        self.height = 2160 * self.scale_percent / 100
-        self.width= 3840 * self.scale_percent / 100
-        self.dim = (int(self.width), int(self.height))
+        self.pose = np.hstack((np.eye(3, 3), np.zeros((3, 1))))
 
         #Initialize detector and descriptor
         #!Note: fast doesnt have descriptors, only detection hence the use of BEBLID descriptors.
@@ -147,9 +143,7 @@ class FeatureExtractor(object):
         self.flann_sift = cv2.FlannBasedMatcher(self.index_params_sift, self.search_params_sift)
     
     @Timer(text="fast: {:.4f}")
-    def process_frame(self, img):
-        #Img resizing
-        img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
+    def process_frame(self, img, K):
         #Feature extracting
         kp = self.fast.detect(img, None)
         kp, des = self.descriptor.compute(img, kp)
@@ -190,9 +184,78 @@ class FeatureExtractor(object):
             cv2.putText(img, 'fast + beblid', (50,25), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,0,255), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(good)), (50,75), cv2.FONT_HERSHEY_SCRIPT_SIMPLEX, 0.5, (255,0,0), 1, cv2.LINE_AA)
             cv2.putText(img, str(len(kp)), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+
+            #Estimate rotation and translation
+            Rot, trans, self.mask = self.EstimateRt(good[:, 0], good[:, 1], K)
+            current_pose = np.hstack((Rot, trans))
+
+            #Triangulate points
+            self.points3d = self.Triangulation(K, self.pose, current_pose, self.mask, good[:, 0], good[:, 1])
+
+            #Reject points behind the camera
+            self.good_pts3d = (np.abs(self.points3d[:, 2]) > 0)
+            
+            self.pose = current_pose
+            
         self.last_frame = {'kp': kp, 'des': des}
         return img, good
         
+    @Timer(text="pose estimate: {:.4f}")
+    def EstimateRt(self, p1, p2, K):
+        E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
+        M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
+        E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
+        H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+        if E_score >= H_score:
+            points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
+        else:
+            H = np.transpose(H)
+            h1 = H[0]
+            h2 = H[1]
+            h3 = H[2]
+
+            Kinv = np.linalg.inv(K)
+
+            L = 1 / np.linalg.norm(np.dot(Kinv, h1))
+
+            r1 = L * np.dot(Kinv, h1)
+            r2 = L * np.dot(Kinv, h2)
+            r3 = np.cross(r1, r2)
+
+            t = L * np.dot(Kinv, h3)
+
+            R = np.array([[r1], [r2], [r3]])
+            R = np.reshape(R, (3, 3))
+            U, S, V = np.linalg.svd(R, full_matrices=True)
+
+            U = np.matrix(U)
+            V = np.matrix(V)
+            R = U * V
+            mask = H_mask
+        matchesMask = mask.ravel().tolist()
+        return R, t, matchesMask
+
+    def Triangulation(self, K, pose1, pose2, matchesMask, p1, p2):
+        #calculate projection matrix for both camera
+        P_l = np.dot(K,  pose1)
+        P_r = np.dot(K,  pose2)
+        #print(matchesMask)
+        # undistort points
+        p1 = p1[np.asarray(matchesMask)==1,:]
+        p2 = p2[np.asarray(matchesMask)==1,:]
+    
+        p1_un = cv2.undistortPoints(p1,K,None)
+        p2_un = cv2.undistortPoints(p2,K,None)
+        p1_un = np.squeeze(p1_un)
+        p2_un = np.squeeze(p2_un)
+
+        #triangulate points this requires points in normalized coordinate
+        point_4d_hom = cv2.triangulatePoints(P_l, P_r, p1_un.T, p2_un.T)
+        point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
+        point_3d = point_3d[:3, :].T
+        
+        return point_3d
+    
     @Timer(text="sift: {:.4f}")
     def sift_frame(self, img):
         #Img resizing
@@ -307,7 +370,7 @@ if __name__=="__main__":
         ret,frame = cap.read()
         if ret == True:
             frame, K, distort = cam.ImageScaling(frame)
-            img, matches = fe.process_frame(frame)
+            img, matches = fe.process_frame(frame, K)
             cv2.imshow('fast output', img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
