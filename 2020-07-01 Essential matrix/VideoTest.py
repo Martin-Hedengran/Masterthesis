@@ -33,6 +33,10 @@ class PangoViewer(object):
         self.dcam.SetHandler(self.handler)
 
     def window_update(self, points):
+        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
+        gl.glClearColor(1.0, 1.0, 1.0, 1.0)
+        self.dcam.Activate(self.scam)
+
         gl.glPointSize(10)
         gl.glColor3f(1.0, 0.0, 0.0)
         pangolin.DrawPoints(points)
