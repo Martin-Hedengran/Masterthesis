@@ -3,22 +3,27 @@ import cv2
 import numpy as np
 from codetiming import Timer
 from skimage.measure import ransac
-from skimage.transform import FundamentalMatrixTransform
+from skimage.transform import EssentialMatrixTransform
 import symmetric_transfer_error
 
 #Img scaled to 40 percent for 
-Display_scale = 25
+Display_scale = 30
 Display_height = 2160 * Display_scale / 100
 Display_width= 3840 * Display_scale / 100
 Display_dim = (int(Display_width), int(Display_height))
 
-
 class PoseEstimation():
+    def __init__(self):
+        self.first_frame = None
     def EstimateRt(self, p1, p2, K):
         E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
         M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
         E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
         H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+        if self.first_frame == None:
+            R = np.eye(3, 3)
+            t = np.zeros((3, 1))
+            return R, t
 
         if E_score >= H_score:
             points, R, t, mask = cv2.recoverPose(E, p1, p2)
@@ -51,13 +56,11 @@ class PoseEstimation():
         matchesMask = mask.ravel().tolist()
         return R, t, matchesMask
     
-    def Triangulation(self, R, t, matches):
+    def Triangulation(self, K, pose1, pose2, matchesMask):
         #calculate projection matrix for both camera
-        M_r = np.hstack((R, t))
-        M_l = np.hstack((np.eye(3, 3), np.zeros((3, 1))))
 
-        P_l = np.dot(K,  M_l)
-        P_r = np.dot(K,  M_r)
+        P_l = np.dot(K,  pose1)
+        P_r = np.dot(K,  pose2)
 
         # undistort points
         p1 = p1[np.asarray(matchesMask)==1,:,:]
@@ -77,6 +80,7 @@ class CameraSettings():
         # DJI Phantom 4 pro
         # Calibration from Metashape 
         #! The values from metashape are offset from optical center
+        self.scale_factor = 0.20
         self.cameraMatrix = np.array([[3657,   0.,         5472 / 2 - 33 ],
                                 [  0.,         3657, 3648 / 2 - 3.5 ],
                                 [0., 0., 1.]])
@@ -96,7 +100,11 @@ class CameraSettings():
         height = int(img.shape[0] * self.scale_factor)
         dim = (width, height)
         img = cv2.resize(img, self.dim, interpolation = cv2.INTER_AREA)
-        return img
+
+        #self.scale_factor = 1
+        self.cameraMatrix *= self.scale_factor
+        self.cameraMatrix[2, 2] = 1
+        return img, self.cameraMatrix, self.distCoeffs
 
 
 class FeatureExtractor(object):
@@ -162,17 +170,17 @@ class FeatureExtractor(object):
                     kp1 = kp[m.queryIdx].pt
                     kp2 = self.last_frame['kp'][m.trainIdx].pt
                     good.append((kp1, kp2))
-            '''
+
         #Fundamental matrix filter
         if len(good) > 0:
             good = np.array(good)
             model, inliers = ransac((good[:, 0], good[:, 1]), 
-                                    FundamentalMatrixTransform,
+                                    EssentialMatrixTransform,
                                     min_samples = 8,
                                     residual_threshold = 1,
                                     max_trials = 100)
             good = good[inliers]
-            '''
+
             #Draw matches and points
             for pt1, pt2 in good:
                 u1,v1 = map(lambda x: int(round(x)), pt1)
@@ -290,26 +298,17 @@ class FeatureExtractor(object):
         return img
 
 fe = FeatureExtractor()
+cam = CameraSettings()
+pe = PoseEstimation()
 
 if __name__=="__main__":
     cap = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
     while cap.isOpened():
         ret,frame = cap.read()
         if ret == True:
+            frame, K, distort = cam.ImageScaling(frame)
             img, matches = fe.process_frame(frame)
-            img_sift = fe.sift_frame(frame)
-            img_orb = fe.orb_frame(frame)
-            img_beblid = fe.beblid_frame(frame)
-            resize = cv2.resize(img, Display_dim, interpolation = cv2.INTER_AREA)
-            resize_sift = cv2.resize(img_sift, Display_dim, interpolation = cv2.INTER_AREA)
-            resize_orb = cv2.resize(img_orb, Display_dim, interpolation = cv2.INTER_AREA)
-            resize_beblid = cv2.resize(img_beblid, Display_dim, interpolation = cv2.INTER_AREA)
-            resize = np.concatenate((resize, resize_sift), axis=1)
-            resize_orb = np.concatenate((resize_orb, resize_beblid), axis=1)
-            final_img = np.concatenate((resize, resize_orb), axis=0)
-            cv2.imshow('fast output', final_img)
-            print("--------")
-            #cv2.imshow('sift output', resize_sift)
+            cv2.imshow('fast output', img)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
     cap.release()
