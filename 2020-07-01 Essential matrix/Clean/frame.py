@@ -25,9 +25,9 @@ def Triangulation(K, skew, pose1, pose2, matchesMask, p1, p2):
     point_3d = point_4d_hom / np.tile(point_4d_hom[-1, :], (4, 1))
     point_3d = point_3d[:3, :].T
     #Reject points behind camera
-    point_3d = (point_3d[:, 2] > 0)
+    good_point_3d = (np.abs(point_3d[:, 2]) > 0)
     
-    return point_3d
+    return point_3d, good_point_3d
 
 def EstimateRt(p1, p2, K):
     #Calculate lowest reprojection error between E and H, choose lowest
@@ -38,6 +38,7 @@ def EstimateRt(p1, p2, K):
     
     if E_score >= H_score:
         points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
+        flag = "essential"
     else:
         #Figure out correct pose from homography using SVD
         H = np.transpose(M)
@@ -63,8 +64,9 @@ def EstimateRt(p1, p2, K):
         V = np.matrix(V)
         R = U * V
         mask = H_mask
+        flag = "homography"
     matchesMask = mask.ravel().tolist()
-    return R, t, matchesMask
+    return R, t, matchesMask, flag
 
 def extract(img):
     #Use Fast for feature detection, BEBLID for description.
@@ -119,7 +121,7 @@ def Match_features(f1, f2, K):
         good = good[inliers]
         
         #Estimate pose
-        R, t, mask = EstimateRt(good[:, 0], good[:, 1], K)
+        R, t, mask, flag = EstimateRt(good[:, 0], good[:, 1], K)
         current_pose = np.eye(4)
         current_pose[:3, :3] = R
         current_pose[:3, 3] = t.T
@@ -127,7 +129,7 @@ def Match_features(f1, f2, K):
         idx1 = np.array(idx1)
         idx2 = np.array(idx2)
 
-    return idx1[inliers], idx2[inliers], current_pose, mask
+    return idx1[inliers], idx2[inliers], current_pose, mask, flag
 
 class Frame(object):
     

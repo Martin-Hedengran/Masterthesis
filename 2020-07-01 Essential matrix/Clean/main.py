@@ -28,6 +28,7 @@ def ImageScaling(img):
     cameraMatrix[2, 2] = 1
     return img, cameraMatrix, distCoeffs
 
+
 class mapp_class(object):
     #A class that holds information about points and poses for building a mapp
     def __init__(self):
@@ -36,9 +37,6 @@ class mapp_class(object):
         self.viewer_init()
 
     def viewer_init(self):
-        import OpenGL.GL as gl
-        import pangolin
-
         pangolin.CreateWindowAndBind('Main', 640, 480)
         gl.glEnable(gl.GL_DEPTH_TEST)
 
@@ -54,28 +52,24 @@ class mapp_class(object):
 
 
     def viewer_refresh(self):
+
+
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
         gl.glClearColor(1.0, 1.0, 1.0, 1.0)
         self.dcam.Activate(self.scam)
-
         gl.glPointSize(10)
-        gl.glColor3f(0.0, 1.0, 0.0)
-        pangolin.DrawPoints(d[:3, 3] for d in self.state[0])
+        gl.glColor3f(1.0, 0.0, 0.0)
+
+        for f in self.frames:
+            pangolin.DrawPoints(f.pose[:, 3:].T)
 
         gl.glPointSize(2)
         gl.glColor3f(0.0, 1.0, 0.0)
-        pangolin.DrawPoints(d for d in self.state[1])
+        for p in self.points:
+            pangolin.DrawPoints([p.pt])
 
         pangolin.FinishFrame()
 
-    def display(self):
-        poses, pts = [], []
-        for f in self.frames:
-            poses.append(f.pose)
-        for p in self.points:
-            pts.append(p.pt)
-            self.state = poses, pts
-            self.viewer_refresh()
 
 class Point(object):
     #An class that holds information about 3d points
@@ -103,29 +97,30 @@ def process_frame(img):
     f1 = mapp.frames[-1]
     f2 = mapp.frames[-2]
 
-    idx1, idx2, pose, mask = Match_features(f1, f2, K)
+    idx1, idx2, pose, mask, flag = Match_features(f1, f2, K)
     f1.pose = np.dot(pose, f2.pose)
 
-    pts3d = Triangulation(K, skew, f1.pose, f2.pose, mask, f1.points[idx1], f2.points[idx2])
-    
+    pts3d, good_pts3d = Triangulation(K, skew, f1.pose, f2.pose, mask, f1.points[idx1], f2.points[idx2])
+
     for i, p in enumerate(pts3d):
+        if not good_pts3d[i]:
+            continue
         pt = Point(mapp, p)
         pt.add_observation(f1, idx1[i])
         pt.add_observation(f2, idx2[i])
-        
+
     for pt1, pt2 in zip(f1.points[idx1], f2.points[idx2]):
         u1,v1 = map(lambda x: int(round(x)), pt1)
         u2,v2 = map(lambda x: int(round(x)), pt2)
         cv2.circle(img, (u1, v1), color=(0,255,0), radius=3)
         cv2.line(img, (u1, v1), (u2, v2), color=(255,0,0))
     cv2.putText(img, str(len(f1.points[idx1])), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
-    
+    cv2.putText(img, str(flag), (50,75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
+    mapp.viewer_refresh()
     return img
 
 
-
 mapp = mapp_class()
-mapp.display()
 
 if __name__ == "__main__":
     cap = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
