@@ -2,9 +2,7 @@
 import numpy as np
 import cv2
 from frame import Frame, Match_features, Triangulation
-from multiprocessing import Process, Queue
-import OpenGL.GL as gl
-import pangolin
+from pangomap import Map, Point
 
 
 def ImageScaling(img):
@@ -28,63 +26,6 @@ def ImageScaling(img):
     cameraMatrix[2, 2] = 1
     return img, cameraMatrix, distCoeffs
 
-
-class mapp_class(object):
-    #A class that holds information about points and poses for building a mapp
-    def __init__(self):
-        self.frames = []
-        self.points = []
-        self.viewer_init()
-
-    def viewer_init(self):
-        pangolin.CreateWindowAndBind('Main', 640, 480)
-        gl.glEnable(gl.GL_DEPTH_TEST)
-
-        self.scam = pangolin.OpenGlRenderState(
-        pangolin.ProjectionMatrix(640, 480, 420, 420, 320, 240, 0.2, 100),
-        pangolin.ModelViewLookAt(-2, 2, -2, 0, 0, 0, pangolin.AxisDirection.AxisY))
-        self.handler = pangolin.Handler3D(self.scam)
-
-        # Create Interactive View in window
-        self.dcam = pangolin.CreateDisplay()
-        self.dcam.SetBounds(0.0, 1.0, 0.0, 1.0, -640.0/480.0)
-        self.dcam.SetHandler(self.handler)
-
-
-    def viewer_refresh(self):
-
-
-        gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        gl.glClearColor(1.0, 1.0, 1.0, 1.0)
-        self.dcam.Activate(self.scam)
-        gl.glPointSize(10)
-        gl.glColor3f(1.0, 0.0, 0.0)
-
-        for f in self.frames:
-            pangolin.DrawPoints(f.pose[:, 3:].T)
-
-        gl.glPointSize(2)
-        gl.glColor3f(0.0, 1.0, 0.0)
-        for p in self.points:
-            pangolin.DrawPoints([p.pt])
-
-        pangolin.FinishFrame()
-
-
-class Point(object):
-    #An class that holds information about 3d points
-    def __init__(self, mapp, loc):
-        self.pt = loc
-        self.frames = []
-        self.idxs = []
-
-        self.id = len(mapp.points)
-        mapp.points.append(self)
-    
-    def add_observation(self, frame, idx):
-        #adds the observation of a point in a given frame
-        self.frames.append(frame)
-        self.idxs.append(idx)
 
 def process_frame(img):
     img, K, skew = ImageScaling(img)
@@ -116,11 +57,11 @@ def process_frame(img):
         cv2.line(img, (u1, v1), (u2, v2), color=(255,0,0))
     cv2.putText(img, str(len(f1.points[idx1])), (50,50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
     cv2.putText(img, str(flag), (50,75), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 1, cv2.LINE_AA)
-    mapp.viewer_refresh()
+    mapp.display()
     return img
 
 
-mapp = mapp_class()
+mapp = Map()
 
 if __name__ == "__main__":
     cap = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
