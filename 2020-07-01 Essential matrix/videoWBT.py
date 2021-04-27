@@ -117,7 +117,7 @@ def generate_path(translations,startPos=np.array([[0], [0], [0], [0]])):
 
 def rescale(img):
     
-    scale_percent = 15 # percent of original size
+    scale_percent = 17 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -164,8 +164,8 @@ fast = cv2.FastFeatureDetector_create()
 #! The input to belid is feature scale and depends on the detector used. fast=5, sift = 6,75, orb = 1
 descriptor = cv2.xfeatures2d.BEBLID_create(5)
 
-rotation = []
-translation = []
+rotation1to2 = []
+translation1to2 = []
 position = []
 pgoPosition = []
 adjusted_position = []
@@ -201,15 +201,22 @@ altitude.append(currPos.flatten()[2])
 raw = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
 ret,frame = raw.read()
 
-img1 = rescale(frame)
+img2 = rescale(frame)
 
-for i in range(130):
+for j in range(29):
+        raw.grab()
+
+ret,frame = raw.read()
+img3 = rescale(frame)
+
+for i in range(100):
     # Load images
-    for j in range(24):
+    for j in range(29):
         raw.grab()
     ret,frame = raw.read()
-    img2 = img1
-    img1 = rescale(frame)
+    img1 = img2
+    img2 = img3
+    img3 = rescale(frame)
 
     
     # -------------------- ORB TEST ---------------------------------- #
@@ -255,8 +262,10 @@ for i in range(130):
 
     kp1 = fast.detect(img1, None)
     kp2 = fast.detect(img2, None)
+    kp3 = fast.detect(img3, None)
     kp1, des1 = descriptor.compute(img1, kp1)
     kp2, des2 = descriptor.compute(img2, kp2)
+    kp3, des3 = descriptor.compute(img3, kp3)
     #Bruteforce hamming distance
     #matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
     #matches = matcher.knnMatch(des1, des2, 2)
@@ -270,18 +279,29 @@ for i in range(130):
     search_params = dict(checks = 50)
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    matches = flann.knnMatch(des1,des2,k=2)
+    matches1to2 = flann.knnMatch(des1,des2,k=2)
+    matches2to3 = flann.knnMatch(des2,des3,k=2)
 
     MIN_MATCH_COUNT = 10
 
-    good = []
-    for m,n in matches:
+    good1to2 = []
+    good2to3 = []
+
+    for m,n in matches1to2:
         if m.distance < 0.7*n.distance:
-            good.append(m)
-    print(len(good))
-    if len(good)>MIN_MATCH_COUNT:
-        pts1 = np.float64([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-        pts2 = np.float64([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+            good1to2.append(m)
+    print(len(good1to2))
+    if len(good1to2)>MIN_MATCH_COUNT:
+        pts1to2_1 = np.float64([ kp1[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+        pts1to2_2 = np.float64([ kp2[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+
+    for m,n in matches2to3:
+        if m.distance < 0.7*n.distance:
+            good2to3.append(m)
+    print(len(good2to3))
+    if len(good2to3)>MIN_MATCH_COUNT:
+        pts2to3_1 = np.float64([ kp2[m.queryIdx].pt for m in good2to3 ]).reshape(-1,1,2)
+        pts2to3_2 = np.float64([ kp3[m.trainIdx].pt for m in good2to3 ]).reshape(-1,1,2)
 
 
     # -------------------- SIFT TEST --------------------------------- #
@@ -318,20 +338,30 @@ for i in range(130):
                 [  0.,         focal_lenght, cy ],
                 [0., 0., 1.]])
 
-    essential_matrix, mask = cv2.findEssentialMat(pts1, pts2, cameraMatrix, cv2.RANSAC, 0.999, 1.0)
+    essential_matrix1to2, mask1to2 = cv2.findEssentialMat(pts1to2_1, pts1to2_2, cameraMatrix, cv2.RANSAC, 0.999, 1.0)
     #print(essential_matrix)
-    matchesMask = mask.ravel().tolist()
-    retval, R, t, mask = cv2.recoverPose(essential_matrix, pts1, pts2, cameraMatrix)
-    x, y ,z = R
-    rotation.append(R) 
-    translation.append(t)
-    bundle_rot.append(R)
-    bundle_T.append(t)
+    matchesMask1to2 = mask1to2.ravel().tolist()
+
+    retval1to2, R1to2, t1to2, mask1to2 = cv2.recoverPose(essential_matrix1to2, pts1to2_1, pts1to2_2, cameraMatrix)
+
+    rotation1to2.append(R1to2) 
+    translation1to2.append(t1to2)
+
+    essential_matrix2to3, mask2to3 = cv2.findEssentialMat(pts2to3_1, pts2to3_2, cameraMatrix, cv2.RANSAC, 0.999, 1.0)
+    #print(essential_matrix)
+    matchesMask2to3 = mask2to3.ravel().tolist()
+
+    retval2to3, R2to3, t2to3, mask2to3 = cv2.recoverPose(essential_matrix2to3, pts2to3_1, pts2to3_2, cameraMatrix)
+
+    bundle_rot.append(R2to3)
+    bundle_T.append(t2to3)
+
     if len(bundle_rot) > window_size:
         bundle_rot.pop(0)
         bundle_T.pop(0)
 
-    H = np.concatenate((R,t), axis=1)
+
+    H = np.concatenate((R2to3,t2to3), axis=1)
     H = np.concatenate((H,np.array([[0,0,0,1]])), axis=0)
     #print("R: "+ str(R) +"\t t: " + str(t) +"\t H: "+ str(H))
     #print(currPos)
@@ -351,17 +381,17 @@ for i in range(130):
     position.append(pos)
     currPos = np.matmul(H,currPos)
     if i == 0:
-        triang_points = (triangulation(np.eye(3, 3), np.zeros((3, 1)), R, t, cameraMatrix, pts1, pts2, matchesMask))
+        triang_points = (triangulation(np.identity(3), np.zeros((3, 1)), R1to2, t1to2, cameraMatrix, pts1to2_1, pts1to2_2, matchesMask1to2))
     elif triang_points == []:
-        triang_points = (triangulation(rotation[i-1], translation[i-1], rotation[i], translation[i], cameraMatrix, pts1, pts2, matchesMask))
+        triang_points = (triangulation(rotation1to2[i-1], translation1to2[i-1], rotation1to2[i], translation1to2[i], cameraMatrix, pts1to2_1, pts1to2_2, matchesMask1to2))
     else:
         temp = triang_points
-        triang_points = (triangulation(rotation[i-1], translation[i-1], rotation[i], translation[i], cameraMatrix, pts1, pts2, matchesMask))
+        triang_points = (triangulation(rotation1to2[i-1], translation1to2[i-1], rotation1to2[i], translation1to2[i], cameraMatrix, pts1to2_1, pts1to2_2, matchesMask1to2))
         triang_points = np.concatenate((temp, triang_points), axis=0)
     
     # ----------------------- PGO Position ------------------------------------------------------#
 
-    pgo_R, pgo_t = bundleadjust_camera_coords.PoseOptimizer(focal_lenght, cx, cy, triang_points, R, t, 100, 0)
+    pgo_R, pgo_t = bundleadjust_camera_coords.PoseOptimizer(focal_lenght, cx, cy, triang_points, R2to3, t2to3, 100)
 
     pgo_R = quaternion_rotation_matrix(pgo_R)
     pgo_t = np.transpose(np.matrix(pgo_t))
@@ -380,7 +410,7 @@ for i in range(130):
     # ---------------------------------------------------------------------------------------------#
     
     if count == window_size - 1:
-        temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 10, 0)
+        temp_R, temp_T = bundleadjust_camera_coords.bundle_adjustment(focal_lenght, cx, cy, triang_points, bundle_rot, bundle_T, 100, 0)
         for l in range(len(temp_T)):
             adjusted_R.append(quaternion_rotation_matrix(temp_R[l]))
             adjusted_T.append(temp_T[l])
@@ -420,6 +450,7 @@ adjusted_path = generate_path(adjusted_position, startPos)
 # plt.axis('equal')
 
 fig, axs = plt.subplots(4)
+
 fig.suptitle('Vertically stacked subplots')
 
 axs[1].plot(path[:,2], path[:,0])
