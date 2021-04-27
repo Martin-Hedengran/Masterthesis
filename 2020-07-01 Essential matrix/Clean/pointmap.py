@@ -5,14 +5,14 @@ import pangolin
 from multiprocessing import Process, Queue
 
 class Point(object):
-# A Point is a 3-D point in the world
-# Each Point is observed in multiple Frames
+    # A Point is a 3-D point in the world
+    # Each Point is observed in multiple Frames
 
     def __init__(self, mapp, loc):
         self.pt = loc
         self.frames = []
         self.idxs = []
-
+        
         self.id = len(mapp.points)
         mapp.points.append(self)
 
@@ -41,10 +41,10 @@ class Map(object):
         gl.glEnable(gl.GL_DEPTH_TEST)
 
         self.scam = pangolin.OpenGlRenderState(
-        pangolin.ProjectionMatrix(w, h, 420, 420, w//2, h//2, 0.2, 1000),
-        pangolin.ModelViewLookAt(0, -10, -8,
-                                0, 0, 0,
-                                0, -1, 0))
+            pangolin.ProjectionMatrix(w, h, 420, 420, w//2, h//2, 0.2, 1000),
+            pangolin.ModelViewLookAt(0, -10, -8,
+                                    0, 0, 0,
+                                    0, -1, 0))
         self.handler = pangolin.Handler3D(self.scam)
 
         # Create Interactive View in window
@@ -57,7 +57,7 @@ class Map(object):
             self.state = q.get()
 
         gl.glClear(gl.GL_COLOR_BUFFER_BIT | gl.GL_DEPTH_BUFFER_BIT)
-        gl.glClearColor(1.0, 1.0, 1.0, 1.0)
+        gl.glClearColor(0.0, 0.0, 0.0, 1.0)
         self.dcam.Activate(self.scam)
 
         # draw poses
