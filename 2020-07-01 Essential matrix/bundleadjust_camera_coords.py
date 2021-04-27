@@ -45,7 +45,7 @@ def bundle_adjustment(focal_length, cx, cy, points_3d, rotation, translation, it
         if len(visible) < 2:
             continue
 
-        vp = g2o.VertexSBAPointXYZ()
+        vp = g2o.VertexPointXYZ()
         vp.set_id(point_id)
         vp.set_marginalized(True)
         vp.set_estimate(point)
@@ -84,11 +84,14 @@ def bundle_adjustment(focal_length, cx, cy, points_3d, rotation, translation, it
     
     return adjusted_R, adjusted_T
 
-def PoseOptimizer(focal_length, cx, cy, points_3d, rotation, translation, iterations, outlier_ratio):
+def PoseOptimizer(focal_length, cx, cy, points_3d, rotation, translation, iterations=10):
     optimizer = g2o.SparseOptimizer()
     solver = g2o.BlockSolverSE3(g2o.LinearSolverCholmodSE3())
-    solver = g2o.OptimizationAlgorithmLevenberg(solver)
+    solver = g2o.OptimizationAlgorithmLevenberg(solver)  
     optimizer.set_algorithm(solver)
+
+    terminateAction = g2o.SparseOptimizerTerminateAction()
+    optimizer.add_post_iteration_action(terminateAction)
 
     cam = g2o.CameraParameters(focal_length, np.array([cx, cy], dtype=np.float64), 0)
     cam.set_id(0)
@@ -104,7 +107,7 @@ def PoseOptimizer(focal_length, cx, cy, points_3d, rotation, translation, iterat
     point_id = 1
 
     for i, point in enumerate(points_3d):
-        vp = g2o.VertexSBAPointXYZ()
+        vp = g2o.VertexPointXYZ()
         vp.set_id(point_id)
         vp.set_marginalized(True)
         vp.set_estimate(point)
@@ -126,12 +129,17 @@ def PoseOptimizer(focal_length, cx, cy, points_3d, rotation, translation, iterat
     print('num edges:', len(optimizer.edges()))
 
     print('Performing PGO:')
-    optimizer.initialize_optimization()
     optimizer.set_verbose(True)
-    optimizer.optimize(iterations)
+    optimizer.initialize_optimization()
+    optimizer.compute_initial_guess()
+    optimizer.compute_active_errors()
+    iterator = optimizer.optimize(iterations)
+    #optimizer.save("PGO.g2o")
+
+    print("optimizer finished after "+str(iterator)+" iterations")
 
     adjusted_T = optimizer.vertex(0).estimate().translation()
     adjusted_R = optimizer.vertex(0).estimate().rotation()
-    
+
     return adjusted_R, adjusted_T
 
