@@ -16,17 +16,18 @@ def checkEssentialScore(E, K, pts1, pts2, sigma=1.0):
     invSigmaSquare = 1.0 / (sigma * sigma)
 
     for i in range(len(pts1)):
-        pt1 = pts1[i][0]
-        pt2 = pts2[i][0]
+        pt1 = pts1[i]
+        pt2 = pts2[i]
+
         #Reprojection error in first image
         a1 = F21[0,0] * pt1[0] + F21[0,1] * pt1[1] + F21[0,2]
         b1 = F21[1,0] * pt1[0] + F21[1,1] * pt1[1] + F21[1,2]
         c1 = F21[2,0] * pt1[0] + F21[2,1] * pt1[1] + F21[2,2]
         
+        
         num1 = a1 * pt2[0] + b1 * pt2[1] + c1
-
+        
         squareDist1 = (num1 ** 2) /(a1**2 + b1**2)
-        #print(squareDist1)
         chiSquare1 = squareDist1 * invSigmaSquare
         if chiSquare1 <= th:
             score = score + thscore - chiSquare1
@@ -56,8 +57,8 @@ def checkHomographyScore(H, pts1, pts2, sigma=1.0):
     invSigmaSquare = 1.0 / (sigma * sigma)
     
     for i in range(len(pts1)):
-        pt1 = pts1[i][0]
-        pt2 = pts2[i][0]
+        pt1 = pts1[i]
+        pt2 = pts2[i]
         #Reprojection error in first image
         a1 = 1 / (Hinv[2,0] * pt2[0] + Hinv[2,1] * pt2[1] + Hinv[2,2])
         b1 = (Hinv[0,0] * pt2[0] + Hinv[0,1] * pt2[1] + Hinv[0,2]) * a1
