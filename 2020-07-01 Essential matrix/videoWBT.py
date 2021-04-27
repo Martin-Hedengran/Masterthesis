@@ -287,17 +287,25 @@ for i in range(100):
     good1to2 = []
     good2to3 = []
 
-    for m,n in matches1to2:
-        if m.distance < 0.7*n.distance:
-            good1to2.append(m)
+    for indx, pair in enumerate(matches1to2):
+        try:
+            m,n = pair
+            if m.distance < 0.7*n.distance:
+                good1to2.append(m)
+        except ValueError:
+            pass    
     print(len(good1to2))
     if len(good1to2)>MIN_MATCH_COUNT:
         pts1to2_1 = np.float64([ kp1[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
         pts1to2_2 = np.float64([ kp2[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
 
-    for m,n in matches2to3:
-        if m.distance < 0.7*n.distance:
-            good2to3.append(m)
+    for indx, pair in matches2to3:
+        try:
+            m,n = pair
+            if m.distance < 0.7*n.distance:
+                good2to3.append(m)
+        except ValueError:
+            pass
     print(len(good2to3))
     if len(good2to3)>MIN_MATCH_COUNT:
         pts2to3_1 = np.float64([ kp2[m.queryIdx].pt for m in good2to3 ]).reshape(-1,1,2)
