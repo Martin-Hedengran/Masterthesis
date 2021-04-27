@@ -299,7 +299,7 @@ for i in range(100):
         pts1to2_1 = np.float64([ kp1[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
         pts1to2_2 = np.float64([ kp2[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
 
-    for indx, pair in matches2to3:
+    for indx, pair in enumerate(matches2to3):
         try:
             m,n = pair
             if m.distance < 0.7*n.distance:
