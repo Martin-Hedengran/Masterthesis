@@ -171,7 +171,7 @@ pgoPosition = []
 adjusted_position = []
 altitude = []
 triang_points = []
-window_size = 5
+window_size = 10
 count = 0
 adjusted_R = []
 adjusted_T = []
@@ -209,11 +209,16 @@ for j in range(29):
 ret,frame = raw.read()
 img3 = rescale(frame)
 
-for i in range(100):
+i = 0
+
+while True:
     # Load images
     for j in range(29):
         raw.grab()
     ret,frame = raw.read()
+    if np.shape(frame) == ():
+        break
+
     img1 = img2
     img2 = img3
     img3 = rescale(frame)
@@ -279,8 +284,8 @@ for i in range(100):
     search_params = dict(checks = 50)
     flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    matches1to2 = flann.knnMatch(des1,des2,k=2)
-    matches2to3 = flann.knnMatch(des2,des3,k=2)
+    matches1to2 = flann.knnMatch(des2,des1,k=2)
+    matches2to3 = flann.knnMatch(des3,des2,k=2)
 
     MIN_MATCH_COUNT = 10
 
@@ -296,8 +301,8 @@ for i in range(100):
             pass    
     print(len(good1to2))
     if len(good1to2)>MIN_MATCH_COUNT:
-        pts1to2_1 = np.float64([ kp1[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
-        pts1to2_2 = np.float64([ kp2[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+        pts1to2_1 = np.float64([ kp2[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+        pts1to2_2 = np.float64([ kp1[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
 
     for indx, pair in enumerate(matches2to3):
         try:
@@ -308,8 +313,8 @@ for i in range(100):
             pass
     print(len(good2to3))
     if len(good2to3)>MIN_MATCH_COUNT:
-        pts2to3_1 = np.float64([ kp2[m.queryIdx].pt for m in good2to3 ]).reshape(-1,1,2)
-        pts2to3_2 = np.float64([ kp3[m.trainIdx].pt for m in good2to3 ]).reshape(-1,1,2)
+        pts2to3_1 = np.float64([ kp3[m.queryIdx].pt for m in good2to3 ]).reshape(-1,1,2)
+        pts2to3_2 = np.float64([ kp2[m.trainIdx].pt for m in good2to3 ]).reshape(-1,1,2)
 
 
     # -------------------- SIFT TEST --------------------------------- #
@@ -428,6 +433,8 @@ for i in range(100):
         count+=1
     
     print("done with img "+str(i))
+
+    i += 1
 
 
 path = generate_path(position, startPos)
