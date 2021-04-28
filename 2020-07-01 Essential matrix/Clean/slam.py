@@ -3,7 +3,7 @@ import os
 import time
 import cv2
 from display import Display
-from frame import Frame, denormalize, Match_features, IRt
+from frame import Frame, denormalize, Match_features
 import numpy as np
 import g2o
 from pointmap import Map, Point
@@ -60,14 +60,18 @@ def process_frame(img):
 
     idx1, idx2, Rt = Match_features(f1, f2, K)
     f1.pose = np.dot(Rt, f2.pose)
-    
+
+    for i,idx in enumerate(idx2):
+        if f2.pts[idx] is not None:
+            f2.pts[idx].add_observation(f1, idx1[i])
     # homogeneous 3-D coords
-    pts4d = triangulate(f1.pose, f2.pose, f1.pts[idx1], f2.pts[idx2])
+    pts4d = triangulate(f1.pose, f2.pose, f1.kps[idx1], f2.kps[idx2])
     pts4d /= pts4d[:, 3:]
 
-    # reject pts without enough "parallax"
-    #reject points behind the camera
-    good_pts4d = (np.abs(pts4d[:, 3]) > 0.005) & (pts4d[:, 2] > 0)
+    #reject pts without enough "parallax" and reject points behind the camera
+    #add only new points, previously unmatched
+    unmatched_points = np.array([f1.pts[i] is None for i in idx1])
+    good_pts4d = (np.abs(pts4d[:, 3]) > 0.005) & (pts4d[:, 2] > 0) & unmatched_points
 
     for i,p in enumerate(pts4d):
         if not good_pts4d[i]:
@@ -77,7 +81,7 @@ def process_frame(img):
         pt.add_observation(f2, idx2[i])
 
 
-    for pt1, pt2 in zip(f1.pts[idx1], f2.pts[idx2]):
+    for pt1, pt2 in zip(f1.kps[idx1], f2.kps[idx2]):
         u1, v1 = denormalize(K, pt1)
         u2, v2 = denormalize(K, pt2)
         cv2.circle(img, (u1, v1), color=(0,255,0), radius=3)
@@ -87,6 +91,10 @@ def process_frame(img):
     if disp is not None:
         disp.paint(img)
     
+    #Optimize map after 4 first frames
+    if frame.id >= 4:
+        mapp.optimize()
+
     # 3-D display
     mapp.display()
 

@@ -10,7 +10,6 @@ from skimage.transform import EssentialMatrixTransform
 def add_ones(x):
     return np.concatenate([x, np.ones((x.shape[0], 1))], axis=1)
 
-IRt = np.eye(4)
 
 # pose
 def extractRt(E):
@@ -51,6 +50,18 @@ def denormalize(K, pt):
     ret /= ret[2]
     return int(round(ret[0])), int(round(ret[1]))
 
+def getHomography(p1, p2):
+    A = []
+    for i in range(0, len(p1)):
+        x, y = p1[i][0], p1[i][1]
+        u, v = p2[i][0], p2[i][1]
+        A.append([x, y, 1, 0, 0, 0, -u*x, -u*y, -u])
+        A.append([0, 0, 0, x, y, 1, -v*x, -v*y, -v])
+    A = np.asarray(A)
+    U, S, Vh = np.linalg.svd(A)
+    L = Vh[-1,:] / Vh[-1,-1]
+    H = L.reshape(3, 3)
+    return H
 
 def EstimateRt(p1, p2, K):
     #Calculate lowest reprojection error between E and H, choose lowest
@@ -113,16 +124,16 @@ def Match_features(f1, f2, K):
     for m,n in matches:
         if m.distance < 0.7*n.distance:
             #good.append(m)
-            idx1.append(m.queryIdx)
-            idx2.append(m.trainIdx)
+            p1 = f1.kps[m.queryIdx]
+            p2 = f2.kps[m.trainIdx]
 
-            p1 = f1.pts[m.queryIdx]
-            p2 = f2.pts[m.trainIdx]
-            lowe.append((p1, p2))
+            #Outlier removal. travel less than 10% of diagonal and be within orb distance 32
+            if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+                idx1.append(m.queryIdx)
+                idx2.append(m.trainIdx)
+                
+                lowe.append((p1, p2))
 
-
-    pts1 = np.float64([ f1.pts[m.queryIdx] for m in good ]).reshape(-1,1,2)
-    pts2 = np.float64([ f2.pts[m.trainIdx] for m in good ]).reshape(-1,1,2)
     
     #Minimum 8 matches
     lowe = np.array(lowe)
@@ -136,7 +147,7 @@ def Match_features(f1, f2, K):
 
     Rt = extractRt(model.params)
 
-    #!TODO fix this?
+    #!TODO fix this? use getHomography and redo symmetric transfer error testing
     #pts1 = np.float64([ f1.pts[m.queryIdx] for m in good ]).reshape(-1,1,2)
     #pts2 = np.float64([ f2.pts[m.trainIdx] for m in good ]).reshape(-1,1,2)
 
@@ -152,12 +163,16 @@ def Match_features(f1, f2, K):
 
 class Frame(object):
     def __init__(self, mapp, img, K):
+        #save camera intrinsic + inverse
         self.K = K
         self.Kinv = np.linalg.inv(self.K)
-        self.pose = IRt
-
+        #save points and poses
+        self.pose = np.eye(4)
         pts, self.des = extract(img)
-        self.pts = normalize(self.Kinv, pts)
+        self.kps = normalize(self.Kinv, pts)
+        self.pts = [None]*len(self.kps)
+        #Save img and frame info
         self.img = img
+        self.h, self.w = img.shape[0:2]
         self.id = len(mapp.frames)
         mapp.frames.append(self)
