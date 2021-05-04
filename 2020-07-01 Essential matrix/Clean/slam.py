@@ -35,7 +35,7 @@ Kinv = np.linalg.inv(K)
 
 # main classes
 mapp = Map()
-disp = Display(W, H) if os.getenv("D2D") is not None else None
+disp = Display(W, H) if os.getenv("display") is not None else None
 
 def triangulate(pose1, pose2, pts1, pts2):
     #Direct linear triangulation from orbslam
@@ -108,13 +108,14 @@ def process_frame(img):
     mapp.display()
 c=1
 if __name__ == "__main__":
+    skip = int(os.getenv("skip", "1"))
     #Video files available
     #DJI_0199.MOV, DJI_0199_turn.mp4, test_drive.mp4, test_kitti984.mp4
     cap = cv2.VideoCapture("/home/kubuntu/Downloads/test_kitti984.mp4")
     while cap.isOpened():
         ret, frame = cap.read()
         if ret == True:
-            if c%5==0:
+            if c%skip==0:
                 process_frame(frame)
             c+=1
         else:

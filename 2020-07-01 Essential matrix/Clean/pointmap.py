@@ -85,7 +85,7 @@ class Map(object):
 
         opt.set_verbose(True)
         opt.initialize_optimization()
-        opt.optimize(10)
+        opt.optimize(50)
 
         # put frames back
         for f in self.frames:
