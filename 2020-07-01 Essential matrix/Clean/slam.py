@@ -5,7 +5,6 @@ import cv2
 from display import Display
 from frame import Frame, denormalize, Match_features
 import numpy as np
-import g2o
 from pointmap import Map, Point
 
 # camera intrinsics for car driving
@@ -16,6 +15,7 @@ from pointmap import Map, Point
 # DJI Phantom 4 pro
 # Calibration from Metashape 
 #! The values from metashape are offset from optical center
+
 W, H = int(3840/5), int(2160/5)
 Cx, Cy = (3840 / 2 - 35.24)//5, (2160 / 2 - 279)//5
 F = 2676
@@ -35,8 +35,6 @@ disp = Display(W, H) if os.getenv("D2D") is not None else None
 def triangulate(pose1, pose2, pts1, pts2):
     #Direct linear triangulation from orbslam
     ret = np.zeros((pts1.shape[0], 4))
-    pose1 = np.linalg.inv(pose1)
-    pose2 = np.linalg.inv(pose2)
     for i, p in enumerate(zip(pts1, pts2)):
         A = np.zeros((4,4))
         A[0] = p[0][0] * pose1[2] - pose1[0]
@@ -48,12 +46,11 @@ def triangulate(pose1, pose2, pts1, pts2):
     return ret
 
 def process_frame(img):
-
     img = cv2.resize(img, (W,H))
     frame = Frame(mapp, img, K)
-
     if frame.id == 0:
         return
+    print("\n*** frame %d ***" % (frame.id,))
 
     f1 = mapp.frames[-1]
     f2 = mapp.frames[-2]
@@ -64,22 +61,28 @@ def process_frame(img):
     for i,idx in enumerate(idx2):
         if f2.pts[idx] is not None:
             f2.pts[idx].add_observation(f1, idx1[i])
-    # homogeneous 3-D coords
+
+    good_pts4d = np.array([f1.pts[i] is None for i in idx1])
+
     pts4d = triangulate(f1.pose, f2.pose, f1.kps[idx1], f2.kps[idx2])
+    good_pts4d &= np.abs(pts4d[:, 3]) > 0.005
+
+    # homogeneous 3-D coords
     pts4d /= pts4d[:, 3:]
 
-    #reject pts without enough "parallax" and reject points behind the camera
-    #add only new points, previously unmatched
-    unmatched_points = np.array([f1.pts[i] is None for i in idx1])
-    good_pts4d = (np.abs(pts4d[:, 3]) > 0.005) & (pts4d[:, 2] > 0) & unmatched_points
+    # TODO: reject points behind the camera
+    #pts4d = np.dot(f1.pose, pts_tri_local.T).T
+    #good_pts4d &= pts_tri_local[:, 2] > 0
+
+    print("Adding:   %d points" % np.sum(good_pts4d))
 
     for i,p in enumerate(pts4d):
         if not good_pts4d[i]:
             continue
+        u,v = int(round(f1.ukps[idx1[i],0])), int(round(f1.ukps[idx1[i],1]))
         pt = Point(mapp, p)
         pt.add_observation(f1, idx1[i])
         pt.add_observation(f2, idx2[i])
-
 
     for pt1, pt2 in zip(f1.kps[idx1], f2.kps[idx2]):
         u1, v1 = denormalize(K, pt1)
@@ -90,21 +93,24 @@ def process_frame(img):
     # 2-D display
     if disp is not None:
         disp.paint(img)
-    
-    #Optimize map after 4 first frames
+
+    # optimize the map
     if frame.id >= 4:
-        mapp.optimize()
+        err = mapp.optimize()
+        print("Optimize: %f units of error" % err)
 
     # 3-D display
     mapp.display()
-
+c=1
 if __name__ == "__main__":
     #Video files available
     #DJI_0199.MOV, DJI_0199_turn.mp4, test_drive.mp4
-    cap = cv2.VideoCapture("/home/kubuntu/Downloads/DJI_0199_turn.mp4")
+    cap = cv2.VideoCapture("/home/kubuntu/Downloads/DJI_0199.MOV")
     while cap.isOpened():
         ret, frame = cap.read()
         if ret == True:
-            process_frame(frame)
+            if c%150==0:
+                process_frame(frame)
+            c+=1
         else:
             break

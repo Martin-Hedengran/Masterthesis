@@ -3,8 +3,8 @@ import OpenGL.GL as gl
 import pangolin
 from multiprocessing import Process, Queue
 import g2o
-
-
+from frame import poseRt
+LOCAL_WINDOW = 20
 class Point(object):
     # A Point is a 3-D point in the world
     # Each Point is observed in multiple Frames
@@ -43,21 +43,31 @@ class Map(object):
 
         robust_kernel = g2o.RobustKernelHuber(np.sqrt(5.991))
 
+        if LOCAL_WINDOW is None:
+            local_frames = self.frames
+        else:
+            local_frames = self.frames[-LOCAL_WINDOW:]
+
         # add frames to graph
         for f in self.frames:
-            sbacam = g2o.SBACam(g2o.SE3Quat(f.pose[0:3, 0:3], f.pose[0:3, 3]))
-            sbacam.set_cam(f.K[0][0], f.K[1][1], f.K[2][0], f.K[2][1], 1.0)
+            pose = np.linalg.inv(f.pose)
+            sbacam = g2o.SBACam(g2o.SE3Quat(pose[0:3, 0:3], pose[0:3, 3]))
+            sbacam.set_cam(f.K[0][0], f.K[1][1], f.K[0][2], f.K[1][2], 1.0)
 
             v_se3 = g2o.VertexCam()
             v_se3.set_id(f.id)
             v_se3.set_estimate(sbacam)
-            v_se3.set_fixed(f.id == 0)
+            v_se3.set_fixed(f.id <= 1 or f not in local_frames)
             opt.add_vertex(v_se3)
-
+        
         # add points to frames
+        PT_ID_OFFSET = 0x10000
         for p in self.points:
+            if not any([f in local_frames for f in p.frames]):
+                continue
+
             pt = g2o.VertexSBAPointXYZ()
-            pt.set_id(p.id + 0x10000)
+            pt.set_id(p.id + PT_ID_OFFSET)
             pt.set_estimate(p.pt[0:3])
             pt.set_marginalized(True)
             pt.set_fixed(False)
@@ -67,7 +77,7 @@ class Map(object):
                 edge = g2o.EdgeProjectP2MC()
                 edge.set_vertex(0, pt)
                 edge.set_vertex(1, opt.vertex(f.id))
-                uv = f.kps[f.pts.index(p)]
+                uv = f.ukps[f.pts.index(p)]
                 edge.set_measurement(uv)
                 edge.set_information(np.eye(2))
                 edge.set_robust_kernel(robust_kernel)
@@ -75,7 +85,42 @@ class Map(object):
 
         opt.set_verbose(True)
         opt.initialize_optimization()
-        opt.optimize(20)
+        opt.optimize(10)
+
+        # put frames back
+        for f in self.frames:
+            est = opt.vertex(f.id).estimate()
+            R = est.rotation().matrix()
+            t = est.translation()
+            f.pose = np.linalg.inv(poseRt(R, t))
+
+        # put points back (and cull)
+        new_points = []
+        for p in self.points:
+            vert = opt.vertex(p.id + PT_ID_OFFSET)
+            if vert is None:
+                new_points.append(p)
+                continue
+            est = vert.estimate()
+
+            # 2 match point that's old
+            #old_point = len(p.frames) == 2 and p.frames[-1] not in local_frames
+            '''
+            # compute reprojection error
+            errs = []
+            for f in p.frames:
+                uv = f.ukps[f.pts.index(p)]
+                proj = np.dot(np.dot(f.K, f.pose[:3]),
+                            np.array([est[0], est[1], est[2], 1.0]))
+                proj = proj[0:2] / proj[2]
+                errs.append(np.linalg.norm(proj-uv))
+            '''
+            p.pt = np.array(est)
+            new_points.append(p)
+
+        self.points = new_points
+
+        return opt.chi2()
 
 
     # *** Map viewer ***
@@ -122,7 +167,7 @@ class Map(object):
     def display(self):
         poses, pts = [], []
         for f in self.frames:
-            poses.append(f.pose)
+            poses.append(np.linalg.inv(f.pose))
         for p in self.points:
             pts.append(p.pt)
         self.q.put((np.array(poses), np.array(pts)))

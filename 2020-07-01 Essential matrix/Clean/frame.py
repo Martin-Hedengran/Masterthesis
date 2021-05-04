@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-np.set_printoptions(suppress=True)
 import symmetric_transfer_error
 from skimage.measure import ransac
 from skimage.transform import FundamentalMatrixTransform
@@ -22,11 +21,13 @@ def extractRt(E):
     if np.sum(R.diagonal()) < 0:
         R = np.dot(np.dot(U, W.T), Vt)
     t = U[:, 2]
+    return np.linalg.inv(poseRt(R, t))
+
+def poseRt(R, t):
     ret = np.eye(4)
     ret[:3, :3] = R
     ret[:3, 3] = t
     return ret
-
 
 def extract(img):
     #Use Fast for feature detection, BEBLID for description.
@@ -101,7 +102,8 @@ def EstimateRt(p1, p2, K):
     return R, t, matchesMask
 
 def Match_features(f1, f2, K):
-    lowe, good, idx1, idx2 = [], [], [], []
+    ret = []
+    idx1,idx2 = [], [] 
     #Define matcher parameters
     matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
     bfmatch = cv2.BFMatcher()
@@ -122,29 +124,38 @@ def Match_features(f1, f2, K):
     
     # store all the good matches as per Lowe's ratio test.
     for m,n in matches:
-        if m.distance < 0.7*n.distance:
-            #good.append(m)
+        if m.distance < 0.75*n.distance:
             p1 = f1.kps[m.queryIdx]
             p2 = f2.kps[m.trainIdx]
 
-            #Outlier removal. travel less than 10% of diagonal and be within orb distance 32
-            if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+            # travel less than 10% of diagonal and be within orb distance 32
+            #if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+            # keep around indices
+            if m.queryIdx not in idx1 and m.trainIdx not in idx2:
                 idx1.append(m.queryIdx)
                 idx2.append(m.trainIdx)
-                
-                lowe.append((p1, p2))
 
-    
+                ret.append((p1, p2))
+
+    # no duplicates
+    assert(len(set(idx1)) == len(idx1))
+    assert(len(set(idx2)) == len(idx2))
     #Minimum 8 matches
-    lowe = np.array(lowe)
-    assert len(lowe) >= 8
-    #Essential matrix filter
-    model, inliers = ransac((lowe[:, 0], lowe[:, 1]), 
-                            EssentialMatrixTransform,
-                            min_samples = 8,
-                            residual_threshold = 0.005,
-                            max_trials = 100)
+    assert len(ret) >= 8
+    ret = np.array(ret)
+    idx1 = np.array(idx1)
+    idx2 = np.array(idx2)
 
+    # fit matrix
+    model, inliers = ransac((ret[:, 0], ret[:, 1]),
+                            FundamentalMatrixTransform,
+                            #EssentialMatrixTransform,
+                            min_samples=8,
+                            residual_threshold=0.001,
+                            max_trials=100)
+    #print("Matches:  %d -> %d -> %d -> %d" % (len(f1.des), len(matches), len(inliers), sum(inliers)))
+
+    # ignore outliers
     Rt = extractRt(model.params)
 
     #!TODO fix this? use getHomography and redo symmetric transfer error testing
@@ -168,8 +179,8 @@ class Frame(object):
         self.Kinv = np.linalg.inv(self.K)
         #save points and poses
         self.pose = np.eye(4)
-        pts, self.des = extract(img)
-        self.kps = normalize(self.Kinv, pts)
+        self.ukps, self.des = extract(img)
+        self.kps = normalize(self.Kinv, self.ukps)
         self.pts = [None]*len(self.kps)
         #Save img and frame info
         self.img = img
