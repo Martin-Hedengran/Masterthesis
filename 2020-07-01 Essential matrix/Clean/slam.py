@@ -6,19 +6,24 @@ from display import Display
 from frame import Frame, denormalize, Match_features
 import numpy as np
 from pointmap import Map, Point
+import math
 
 # camera intrinsics for car driving
 #W, H = 1920//2, 1080//2
 #Cx, Cy = 1920//4, 1080//4
 #F = 270
 
+# camera intrinsics for kitti test
+W, H = 1242, 375
+Cx, Cy = 1242//2, 375//2
+F = 984
 # DJI Phantom 4 pro
 # Calibration from Metashape 
 #! The values from metashape are offset from optical center
 
-W, H = int(3840/5), int(2160/5)
-Cx, Cy = (3840 / 2 - 35.24)//5, (2160 / 2 - 279)//5
-F = 2676
+#W, H = int(3840/5), int(2160/5)
+#Cx, Cy = (3840 / 2 - 35.24)//5, (2160 / 2 - 279)//5
+#F = 2676
 K = np.array([[F,0,Cx],
             [0,F,Cy],
             [0,0,1]])
@@ -104,12 +109,12 @@ def process_frame(img):
 c=1
 if __name__ == "__main__":
     #Video files available
-    #DJI_0199.MOV, DJI_0199_turn.mp4, test_drive.mp4
-    cap = cv2.VideoCapture("/home/kubuntu/Downloads/DJI_0199.MOV")
+    #DJI_0199.MOV, DJI_0199_turn.mp4, test_drive.mp4, test_kitti984.mp4
+    cap = cv2.VideoCapture("/home/kubuntu/Downloads/test_kitti984.mp4")
     while cap.isOpened():
         ret, frame = cap.read()
         if ret == True:
-            if c%150==0:
+            if c%5==0:
                 process_frame(frame)
             c+=1
         else:

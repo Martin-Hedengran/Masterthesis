@@ -4,7 +4,7 @@ import pangolin
 from multiprocessing import Process, Queue
 import g2o
 from frame import poseRt
-LOCAL_WINDOW = 20
+LOCAL_WINDOW = 5
 class Point(object):
     # A Point is a 3-D point in the world
     # Each Point is observed in multiple Frames
