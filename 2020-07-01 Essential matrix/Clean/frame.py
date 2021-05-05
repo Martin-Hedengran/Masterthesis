@@ -99,10 +99,10 @@ def EstimateRt(p1, p2, K):
         R = U * V
         mask = H_mask
     matchesMask = mask.ravel().tolist()
-    return R, t, matchesMask
+    return R, t
 
 def Match_features(f1, f2, K):
-    ret = []
+    ret, good = [], []
     idx1,idx2 = [], [] 
     #Define matcher parameters
     matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
@@ -124,6 +124,7 @@ def Match_features(f1, f2, K):
     
     # store all the good matches as per Lowe's ratio test.
     for m,n in matches:
+        good.append(m)
         if m.distance < 0.75*n.distance:
             p1 = f1.kps[m.queryIdx]
             p2 = f2.kps[m.trainIdx]
@@ -154,18 +155,21 @@ def Match_features(f1, f2, K):
                             residual_threshold=0.001,
                             max_trials=100)
     #print("Matches:  %d -> %d -> %d -> %d" % (len(f1.des), len(matches), len(inliers), sum(inliers)))
-
+    #E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
     # ignore outliers
     Rt = extractRt(model.params)
+    #rint(model.params)
+    #Rt = EstimateRt(ret[:, 0], ret[:, 1], K)
+
 
     #!TODO fix this? use getHomography and redo symmetric transfer error testing
-    #pts1 = np.float64([ f1.pts[m.queryIdx] for m in good ]).reshape(-1,1,2)
-    #pts2 = np.float64([ f2.pts[m.trainIdx] for m in good ]).reshape(-1,1,2)
+    #pts1 = np.float64([ f1.kps[m.queryIdx] for m in good ]).reshape(-1,1,2)
+    #pts2 = np.float64([ f2.kps[m.trainIdx] for m in good ]).reshape(-1,1,2)
 
-    #R, t, mask = EstimateRt(pts1, pts2, K)
-    #ret = np.eye(4)
-    #ret[:3, :3] = R
-    #ret[:3, 3] = t.T[0]
+    #R, t = EstimateRt(pts1, pts2, K)
+    #Rt = np.eye(4)
+    #Rt[:3, :3] = R
+    #Rt[:3, 3] = t.T[0]
 
     idx1 = np.array(idx1)
     idx2 = np.array(idx2)
