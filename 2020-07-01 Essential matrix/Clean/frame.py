@@ -1,6 +1,5 @@
 import cv2
 import numpy as np
-np.set_printoptions(suppress=True)
 import symmetric_transfer_error
 from skimage.measure import ransac
 from skimage.transform import FundamentalMatrixTransform
@@ -12,9 +11,9 @@ def add_ones(x):
 
 
 # pose
-def extractRt(E):
+def extractRt(F):
     W = np.mat([[0,-1,0],[1,0,0],[0,0,1]],dtype=float)
-    U,d,Vt = np.linalg.svd(E)
+    U,d,Vt = np.linalg.svd(F)
     assert np.linalg.det(U) > 0
     if np.linalg.det(Vt) < 0:
         Vt *= -1.0
@@ -22,12 +21,16 @@ def extractRt(E):
     if np.sum(R.diagonal()) < 0:
         R = np.dot(np.dot(U, W.T), Vt)
     t = U[:, 2]
+    return np.linalg.inv(poseRt(R, t))
+
+#Turn rotation and translation to pose matrix
+def poseRt(R, t):
     ret = np.eye(4)
     ret[:3, :3] = R
     ret[:3, 3] = t
     return ret
 
-
+#Extract features
 def extract(img):
     #Use Fast for feature detection, BEBLID for description.
     fast = cv2.FastFeatureDetector_create()
@@ -41,15 +44,17 @@ def extract(img):
     return np.array([(kp.pt[0], kp.pt[1]) for kp in kps]), des
     
 
-
+#Normalize points
 def normalize(Kinv, pts):
     return np.dot(Kinv, add_ones(pts).T).T[:, 0:2]
 
+#Denormalize points
 def denormalize(K, pt):
     ret = np.dot(K, np.array([pt[0], pt[1], 1.0]))
     ret /= ret[2]
     return int(round(ret[0])), int(round(ret[1]))
 
+#Extract homography from 2 images
 def getHomography(p1, p2):
     A = []
     for i in range(0, len(p1)):
@@ -63,18 +68,18 @@ def getHomography(p1, p2):
     H = L.reshape(3, 3)
     return H
 
-def EstimateRt(p1, p2, K):
+#Calculate pose from highest matrix value.
+def EstimateRt(p1, p2, K, F, H):
     #Calculate lowest reprojection error between E and H, choose lowest
-    E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
-    M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
-    E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
-    H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+    E_score = symmetric_transfer_error.checkEssentialScore(F, K, p1, p2)
+    H_score = symmetric_transfer_error.checkHomographyScore(H, p1, p2)
     
     if E_score >= H_score:
-        points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
+        Rt = extractRt(F)
+        print('Essential')
     else:
         #Figure out correct pose from homography using SVD
-        H = np.transpose(M)
+        H = np.transpose(H)
         h1 = H[0]
         h2 = H[1]
         h3 = H[2]
@@ -96,12 +101,15 @@ def EstimateRt(p1, p2, K):
         U = np.matrix(U)
         V = np.matrix(V)
         R = U * V
-        mask = H_mask
-    matchesMask = mask.ravel().tolist()
-    return R, t, matchesMask
+
+        Rt = poseRt(R, t)
+        print ('Homography')
+
+    return Rt 
 
 def Match_features(f1, f2, K):
-    lowe, good, idx1, idx2 = [], [], [], []
+    ret, good = [], []
+    idx1,idx2 = [], [] 
     #Define matcher parameters
     matcher = cv2.DescriptorMatcher_create(cv2.DescriptorMatcher_BRUTEFORCE_HAMMING)
     bfmatch = cv2.BFMatcher()
@@ -122,39 +130,42 @@ def Match_features(f1, f2, K):
     
     # store all the good matches as per Lowe's ratio test.
     for m,n in matches:
-        if m.distance < 0.7*n.distance:
-            #good.append(m)
+        good.append(m)
+        if m.distance < 0.75*n.distance:
             p1 = f1.kps[m.queryIdx]
             p2 = f2.kps[m.trainIdx]
 
-            #Outlier removal. travel less than 10% of diagonal and be within orb distance 32
-            if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+            # travel less than 10% of diagonal and be within orb distance 32
+            #if np.linalg.norm((p1-p2)) < 0.1*np.linalg.norm([f1.w, f1.h]) and m.distance < 32:
+            # keep around indices
+            if m.queryIdx not in idx1 and m.trainIdx not in idx2:
                 idx1.append(m.queryIdx)
                 idx2.append(m.trainIdx)
-                
-                lowe.append((p1, p2))
 
-    
+                ret.append((p1, p2))
+
+    # no duplicates
+    assert(len(set(idx1)) == len(idx1))
+    assert(len(set(idx2)) == len(idx2))
     #Minimum 8 matches
-    lowe = np.array(lowe)
-    assert len(lowe) >= 8
-    #Essential matrix filter
-    model, inliers = ransac((lowe[:, 0], lowe[:, 1]), 
-                            EssentialMatrixTransform,
-                            min_samples = 8,
-                            residual_threshold = 0.005,
-                            max_trials = 100)
+    assert len(ret) >= 8
+    ret = np.array(ret)
+    idx1 = np.array(idx1)
+    idx2 = np.array(idx2)
 
-    Rt = extractRt(model.params)
+    # Filter and get fundamental matrix
+    F, inliers = ransac((ret[:, 0], ret[:, 1]),
+                            FundamentalMatrixTransform,
+                            #EssentialMatrixTransform,
+                            min_samples=8,
+                            residual_threshold=0.001,
+                            max_trials=100)
 
-    #!TODO fix this? use getHomography and redo symmetric transfer error testing
-    #pts1 = np.float64([ f1.pts[m.queryIdx] for m in good ]).reshape(-1,1,2)
-    #pts2 = np.float64([ f2.pts[m.trainIdx] for m in good ]).reshape(-1,1,2)
+    #Get homography
+    H = getHomography(ret[:, 0], ret[:, 1])
+    #Get pose
+    Rt = EstimateRt(ret[:, 0], ret[:, 1], K, F.params, H)
 
-    #R, t, mask = EstimateRt(pts1, pts2, K)
-    #ret = np.eye(4)
-    #ret[:3, :3] = R
-    #ret[:3, 3] = t.T[0]
 
     idx1 = np.array(idx1)
     idx2 = np.array(idx2)
@@ -168,8 +179,8 @@ class Frame(object):
         self.Kinv = np.linalg.inv(self.K)
         #save points and poses
         self.pose = np.eye(4)
-        pts, self.des = extract(img)
-        self.kps = normalize(self.Kinv, pts)
+        self.ukps, self.des = extract(img)
+        self.kps = normalize(self.Kinv, self.ukps)
         self.pts = [None]*len(self.kps)
         #Save img and frame info
         self.img = img

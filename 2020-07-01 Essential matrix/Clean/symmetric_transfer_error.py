@@ -1,11 +1,11 @@
 import numpy as np
 
 
-def checkEssentialScore(E, K, pts1, pts2, sigma=1.0):
+def checkEssentialScore(F21, K, pts1, pts2, sigma=1.0):
     #essential to fundamental matrix
-    kinv = np.linalg.inv(K)
-    kinvT = np.transpose(kinv)
-    F21 = kinvT @ E @ kinv
+    #kinv = np.linalg.inv(K)
+    #kinvT = np.transpose(kinv)
+    #F21 = kinvT @ E @ kinv
     #F21 = F21/F21[2][2]
 
     #Outlier rejection threshold based on 1 pixel deviation at 95%
