@@ -115,9 +115,9 @@ def generate_path(translations,startPos=np.array([[0], [0], [0], [0]])):
     return np.array(path)
     #return np.array(path)
 
-def rescale(img):
+def rescale(img, scale_percent=15):
     
-    scale_percent = 17 # percent of original size
+    #scale_percent = 15 # percent of original size
     width = int(img.shape[1] * scale_percent / 100)
     height = int(img.shape[0] * scale_percent / 100)
     dim = (width, height)
@@ -125,12 +125,29 @@ def rescale(img):
     resized = cv2.resize(img, dim, interpolation = cv2.INTER_AREA)
     return resized
 
-def camera_extrinsics(img):
+def crop(img):
+    height, width, fps = img.shape
+
+    XBegin = int(width*0.3)
+    XEnd = int(width*0.7)
+    YBegin = int(height*0.3)
+    YEnd = int(height*0.7)
+
+    imgCropped = img[YBegin:YEnd, XBegin:XEnd]
+
+    return imgCropped
+
+def camera_extrinsics(img, scale_percent=15):
     hfov = 1.047 # 60 degrees
     height, width, fps = img.shape
     focal_length = width/(2*math.tan(hfov/2))
     cx = width/2
     cy = height/2
+
+    scale_divider = 100 / scale_percent
+
+    cx, cy = (3840 / 2 - 35.24)//scale_divider, (2160 / 2 - 279)//scale_divider
+    focal_length = 2676/scale_divider
     
     return focal_length, cx, cy
 
@@ -201,19 +218,23 @@ altitude.append(currPos.flatten()[2])
 raw = cv2.VideoCapture('/home/kubuntu/Downloads/DJI_0199.MOV')
 ret,frame = raw.read()
 
-img2 = rescale(frame)
+IMG_SCALE = 15
 
-for j in range(29):
+img2 = rescale(frame, IMG_SCALE)
+#img2 = crop(frame)
+
+for j in range(14):
         raw.grab()
 
 ret,frame = raw.read()
-img3 = rescale(frame)
+img3 = rescale(frame, IMG_SCALE)
+#img3 = crop(frame)
 
 i = 0
 
 while True:
     # Load images
-    for j in range(29):
+    for j in range(14):
         raw.grab()
     ret,frame = raw.read()
     if np.shape(frame) == ():
@@ -221,7 +242,8 @@ while True:
 
     img1 = img2
     img2 = img3
-    img3 = rescale(frame)
+    img3 = rescale(frame, IMG_SCALE)
+    #img3 = crop(frame)
 
     
     # -------------------- ORB TEST ---------------------------------- #
@@ -323,6 +345,7 @@ while True:
 
     # kp1, des1 = sift.detectAndCompute(img1,None)
     # kp2, des2 = sift.detectAndCompute(img2,None)
+    # kp3, des3 = sift.detectAndCompute(img3,None)
 
     # #use flann to perform feature matching
     # FLANN_INDEX_KDTREE = 0
@@ -331,21 +354,39 @@ while True:
 
     # flann = cv2.FlannBasedMatcher(index_params, search_params)
 
-    # matches = flann.knnMatch(des1,des2,k=2)
+    # matches1to2 = flann.knnMatch(des2,des1,k=2)
+    # matches2to3 = flann.knnMatch(des3,des2,k=2)
 
-    # store all the good matches as per Lowe's ratio test.
-    # good = []
-    # for m,n in matches:
-    #     if m.distance < 0.7*n.distance:
-    #         good.append(m)
-    # print(len(good))
-    # if len(good)>MIN_MATCH_COUNT:
-    #     pts1 = np.float64([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-    #     pts2 = np.float64([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+    # good1to2 = []
+    # good2to3 = []
+
+    # for indx, pair in enumerate(matches1to2):
+    #     try:
+    #         m,n = pair
+    #         if m.distance < 0.7*n.distance:
+    #             good1to2.append(m)
+    #     except ValueError:
+    #         pass    
+    # print(len(good1to2))
+    # if len(good1to2)>MIN_MATCH_COUNT:
+    #     pts1to2_1 = np.float64([ kp2[m.queryIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+    #     pts1to2_2 = np.float64([ kp1[m.trainIdx].pt for m in good1to2 ]).reshape(-1,1,2)
+
+    # for indx, pair in enumerate(matches2to3):
+    #     try:
+    #         m,n = pair
+    #         if m.distance < 0.7*n.distance:
+    #             good2to3.append(m)
+    #     except ValueError:
+    #         pass
+    # print(len(good2to3))
+    # if len(good2to3)>MIN_MATCH_COUNT:
+    #     pts2to3_1 = np.float64([ kp3[m.queryIdx].pt for m in good2to3 ]).reshape(-1,1,2)
+    #     pts2to3_2 = np.float64([ kp2[m.trainIdx].pt for m in good2to3 ]).reshape(-1,1,2)
 
     # ---------------------------------------------------------------- #
 
-    focal_lenght, cx, cy = camera_extrinsics(img1)
+    focal_lenght, cx, cy = camera_extrinsics(img1, IMG_SCALE)
 
     cameraMatrix = np.array([[focal_lenght,   0.,         cx ],
                 [  0.,         focal_lenght, cy ],
