@@ -8,7 +8,7 @@ import numpy as np
 from pointmap import Map, Point
 import math
 
-# camera intrinsics for car driving
+# camera intrinsics for car driving scaled to half
 #W, H = 1920//2, 1080//2
 #Cx, Cy = 1920//4, 1080//4
 #F = 270
@@ -21,6 +21,7 @@ import math
 # DJI Phantom 4 pro
 # Calibration from Metashape 
 #! The values from metashape are offset from optical center
+#Scaled to 20%
 W, H = int(3840/5), int(2160/5)
 Cx, Cy = (3840 / 2 - 35.24)//5, (2160 / 2 - 279)//5
 F = 2676/5
@@ -68,17 +69,18 @@ def process_frame(img):
     
     good_pts4d = np.array([f1.pts[i] is None for i in idx1])
 
+    #Local triangulation to reject points behind camera
+    pts_tri_local = triangulate(Rt, np.eye(4), f1.kps[idx1], f2.kps[idx2])
+    pts_tri_local /= pts_tri_local[:, 3:]
+    good_pts4d &= pts_tri_local[:, 2] > 0
+
     pts4d = triangulate(f1.pose, f2.pose, f1.kps[idx1], f2.kps[idx2])
 
+    #Reject points with too low parallax
     good_pts4d &= np.abs(pts4d[:, 3]) > 0.005
 
     # homogeneous 3-D coords
     pts4d /= pts4d[:, 3:]
-    #pts4d = transform @ pts4d
-
-    # TODO: reject points behind the camera
-    #pts4d = np.dot(f1.pose, pts_tri_local.T).T
-    #good_pts4d &= pts_tri_local[:, 2] > 0
 
     print("Adding:   %d points" % np.sum(good_pts4d))
 

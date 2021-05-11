@@ -11,9 +11,9 @@ def add_ones(x):
 
 
 # pose
-def extractRt(E):
+def extractRt(F):
     W = np.mat([[0,-1,0],[1,0,0],[0,0,1]],dtype=float)
-    U,d,Vt = np.linalg.svd(E)
+    U,d,Vt = np.linalg.svd(F)
     assert np.linalg.det(U) > 0
     if np.linalg.det(Vt) < 0:
         Vt *= -1.0
@@ -23,12 +23,14 @@ def extractRt(E):
     t = U[:, 2]
     return np.linalg.inv(poseRt(R, t))
 
+#Turn rotation and translation to pose matrix
 def poseRt(R, t):
     ret = np.eye(4)
     ret[:3, :3] = R
     ret[:3, 3] = t
     return ret
 
+#Extract features
 def extract(img):
     #Use Fast for feature detection, BEBLID for description.
     fast = cv2.FastFeatureDetector_create()
@@ -42,15 +44,17 @@ def extract(img):
     return np.array([(kp.pt[0], kp.pt[1]) for kp in kps]), des
     
 
-
+#Normalize points
 def normalize(Kinv, pts):
     return np.dot(Kinv, add_ones(pts).T).T[:, 0:2]
 
+#Denormalize points
 def denormalize(K, pt):
     ret = np.dot(K, np.array([pt[0], pt[1], 1.0]))
     ret /= ret[2]
     return int(round(ret[0])), int(round(ret[1]))
 
+#Extract homography from 2 images
 def getHomography(p1, p2):
     A = []
     for i in range(0, len(p1)):
@@ -64,18 +68,18 @@ def getHomography(p1, p2):
     H = L.reshape(3, 3)
     return H
 
-def EstimateRt(p1, p2, K):
+#Calculate pose from highest matrix value.
+def EstimateRt(p1, p2, K, F, H):
     #Calculate lowest reprojection error between E and H, choose lowest
-    E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
-    M, H_mask = cv2.findHomography(p1, p2, cv2.RANSAC,5.0)
-    E_score = symmetric_transfer_error.checkEssentialScore(E, K, p1, p2)
-    H_score = symmetric_transfer_error.checkHomographyScore(M, p1, p2)
+    E_score = symmetric_transfer_error.checkEssentialScore(F, K, p1, p2)
+    H_score = symmetric_transfer_error.checkHomographyScore(H, p1, p2)
     
     if E_score >= H_score:
-        points, R, t, mask_temp = cv2.recoverPose(E, p1, p2)
+        Rt = extractRt(F)
+        print('Essential')
     else:
         #Figure out correct pose from homography using SVD
-        H = np.transpose(M)
+        H = np.transpose(H)
         h1 = H[0]
         h2 = H[1]
         h3 = H[2]
@@ -97,9 +101,11 @@ def EstimateRt(p1, p2, K):
         U = np.matrix(U)
         V = np.matrix(V)
         R = U * V
-        mask = H_mask
-    matchesMask = mask.ravel().tolist()
-    return R, t
+
+        Rt = poseRt(R, t)
+        print ('Homography')
+
+    return Rt 
 
 def Match_features(f1, f2, K):
     ret, good = [], []
@@ -147,29 +153,19 @@ def Match_features(f1, f2, K):
     idx1 = np.array(idx1)
     idx2 = np.array(idx2)
 
-    # fit matrix
-    model, inliers = ransac((ret[:, 0], ret[:, 1]),
+    # Filter and get fundamental matrix
+    F, inliers = ransac((ret[:, 0], ret[:, 1]),
                             FundamentalMatrixTransform,
                             #EssentialMatrixTransform,
                             min_samples=8,
                             residual_threshold=0.001,
                             max_trials=100)
-    #print("Matches:  %d -> %d -> %d -> %d" % (len(f1.des), len(matches), len(inliers), sum(inliers)))
-    #E, mask = cv2.findEssentialMat(p1, p2, K, cv2.RANSAC, 0.999, 1.0)
-    # ignore outliers
-    Rt = extractRt(model.params)
-    #rint(model.params)
-    #Rt = EstimateRt(ret[:, 0], ret[:, 1], K)
 
+    #Get homography
+    H = getHomography(ret[:, 0], ret[:, 1])
+    #Get pose
+    Rt = EstimateRt(ret[:, 0], ret[:, 1], K, F.params, H)
 
-    #!TODO fix this? use getHomography and redo symmetric transfer error testing
-    #pts1 = np.float64([ f1.kps[m.queryIdx] for m in good ]).reshape(-1,1,2)
-    #pts2 = np.float64([ f2.kps[m.trainIdx] for m in good ]).reshape(-1,1,2)
-
-    #R, t = EstimateRt(pts1, pts2, K)
-    #Rt = np.eye(4)
-    #Rt[:3, :3] = R
-    #Rt[:3, 3] = t.T[0]
 
     idx1 = np.array(idx1)
     idx2 = np.array(idx2)
