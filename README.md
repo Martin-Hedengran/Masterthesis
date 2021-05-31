@@ -10,7 +10,7 @@ The code has 2 optional inputs:
 
 The path to the video for testing as well as the camera intrinsic matrix are hardcoded and needs to be altered depending on the use in the Clean/slam.py file
 
-**Example to run the code:** 
+**Example to run the code from ./Clean folder:** 
 ```Bash
 skip=5 display=1 ./slam.py
 ```
