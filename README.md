@@ -16,6 +16,7 @@ Dependencies:
 - python 3.7
 - numpy
 - opencv contrib version
+- skimage
 - sdl2 
 - pangolin, python bindings: https://github.com/uoip/pangolin
 - g2o, python bindings: https://github.com/uoip/g2opy
