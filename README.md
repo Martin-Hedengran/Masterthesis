@@ -5,8 +5,8 @@ The git contains numourus samples of code used for developing the SLAM project.
 **The final code for examination is the code in the Clean folder.**
 
 The code has 2 optional inputs:
-- skip: sets how many frames are skipped per iteration
-- display: enables the sdl2 2D Display
+- skip: Sets how many frames are skipped per iteration
+- display: Enables the sdl2 2D display which shows feature extraction and matching
 
 The path to the video for testing as well as the camera intrinsic matrix are hardcoded and needs to be altered depending on the use in the Clean/slam.py file
 
